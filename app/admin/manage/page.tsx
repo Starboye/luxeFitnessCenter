@@ -77,6 +77,9 @@ function getErrorMessage(error?: string, detail?: string) {
     case "payment-insert-failed":
       return "Unable to record payment right now.";
     case "database-error":
+      if (detail?.includes("photo_path")) {
+        return "The database is missing the new photo column. Run the latest Supabase schema update, then try the upload again.";
+      }
       return detail ? `Database error: ${detail}` : "A database error occurred while saving the form.";
     default:
       return detail || (error ? "Something went wrong while saving the form." : null);
