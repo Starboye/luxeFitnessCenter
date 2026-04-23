@@ -55,6 +55,7 @@ import { markMemberAttendance, recordTrainerAttendance } from "@/lib/data";
 
 const PHOTO_BUCKET = "profile-photos";
 const MAX_PHOTO_SIZE_BYTES = 2 * 1024 * 1024;
+let photoBucketReady = false;
 
 /**
  * SHARED KIOSK ACTION
@@ -185,6 +186,43 @@ function sanitizeFileExtension(fileName: string, mimeType: string) {
   return "jpg";
 }
 
+async function ensurePhotoBucket(supabase: ReturnType<typeof createAdminClient>) {
+  if (photoBucketReady) {
+    return;
+  }
+
+  const { data: existingBucket, error: bucketLookupError } = await supabase.storage.getBucket(PHOTO_BUCKET);
+
+  if (bucketLookupError && !bucketLookupError.message.toLowerCase().includes("not found")) {
+    throw new Error(bucketLookupError.message);
+  }
+
+  if (!existingBucket) {
+    const { error: createBucketError } = await supabase.storage.createBucket(PHOTO_BUCKET, {
+      public: false,
+      fileSizeLimit: MAX_PHOTO_SIZE_BYTES,
+      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"]
+    });
+
+    if (createBucketError && !createBucketError.message.toLowerCase().includes("already exists")) {
+      throw new Error(createBucketError.message);
+    }
+  }
+
+  photoBucketReady = true;
+}
+
+async function removeProfilePhoto(
+  supabase: ReturnType<typeof createAdminClient>,
+  photoPath?: string | null
+) {
+  if (!photoPath) {
+    return;
+  }
+
+  await supabase.storage.from(PHOTO_BUCKET).remove([photoPath]);
+}
+
 async function uploadProfilePhoto(
   supabase: ReturnType<typeof createAdminClient>,
   file: FormDataEntryValue | null,
@@ -213,6 +251,8 @@ async function uploadProfilePhoto(
   const extension = sanitizeFileExtension(maybeFile.name ?? "photo.jpg", maybeFile.type);
   const photoPath = `${folder}/${recordId}.${extension}`;
   const arrayBuffer = await maybeFile.arrayBuffer();
+
+  await ensurePhotoBucket(supabase);
 
   const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(photoPath, arrayBuffer, {
     contentType: maybeFile.type,
@@ -296,6 +336,7 @@ export async function createMemberAction(formData: FormData) {
   end.setDate(end.getDate() + Number(selectedPackage.duration_days) - 1);
   const endDate = end.toISOString().slice(0, 10);
   const totalFee = Number(selectedPackage.price ?? 0);
+  let photoPath: string | null = null;
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -320,7 +361,7 @@ export async function createMemberAction(formData: FormData) {
   }
 
   try {
-    const photoPath = await uploadProfilePhoto(supabase, photoFile, "members", profile.id);
+    photoPath = await uploadProfilePhoto(supabase, photoFile, "members", profile.id);
     if (photoPath) {
       const { error: photoUpdateError } = await supabase.from("profiles").update({ photo_path: photoPath }).eq("id", profile.id);
       if (photoUpdateError) {
@@ -328,6 +369,7 @@ export async function createMemberAction(formData: FormData) {
       }
     }
   } catch (error) {
+    await removeProfilePhoto(supabase, photoPath);
     await supabase.from("profiles").delete().eq("id", profile.id);
     redirectWithError("/admin/manage", "database-error", error instanceof Error ? error.message : "Unable to upload member photo.");
   }
@@ -343,6 +385,7 @@ export async function createMemberAction(formData: FormData) {
     .single();
 
   if (memberError) {
+    await removeProfilePhoto(supabase, photoPath);
     await supabase.from("profiles").delete().eq("id", profile.id);
     redirectWithError(
       "/admin/manage",
@@ -352,6 +395,8 @@ export async function createMemberAction(formData: FormData) {
   }
 
   if (!member) {
+    await removeProfilePhoto(supabase, photoPath);
+    await supabase.from("profiles").delete().eq("id", profile.id);
     redirectWithError("/admin/manage", "database-error", "Member creation returned no record.");
   }
 
@@ -366,6 +411,8 @@ export async function createMemberAction(formData: FormData) {
   });
 
   if (membershipError) {
+    await removeProfilePhoto(supabase, photoPath);
+    await supabase.from("members").delete().eq("id", member.id);
     redirectWithError("/admin/manage", "database-error", formatDbError(membershipError));
   }
 
@@ -386,6 +433,7 @@ export async function createTrainerAction(formData: FormData) {
   const specialization = String(formData.get("specialization") ?? "").trim();
   const role = String(formData.get("role") ?? "trainer").trim();
   const photoFile = formData.get("photo");
+  let photoPath: string | null = null;
 
   if (!fullName || !staffCode || !phone || !role) {
     redirectWithError("/admin/manage", "missing-required-fields");
@@ -415,7 +463,7 @@ export async function createTrainerAction(formData: FormData) {
   }
 
   try {
-    const photoPath = await uploadProfilePhoto(supabase, photoFile, "trainers", profile.id);
+    photoPath = await uploadProfilePhoto(supabase, photoFile, "trainers", profile.id);
     if (photoPath) {
       const { error: photoUpdateError } = await supabase.from("profiles").update({ photo_path: photoPath }).eq("id", profile.id);
       if (photoUpdateError) {
@@ -423,6 +471,7 @@ export async function createTrainerAction(formData: FormData) {
       }
     }
   } catch (error) {
+    await removeProfilePhoto(supabase, photoPath);
     await supabase.from("profiles").delete().eq("id", profile.id);
     redirectWithError("/admin/manage", "database-error", error instanceof Error ? error.message : "Unable to upload trainer photo.");
   }
@@ -436,6 +485,8 @@ export async function createTrainerAction(formData: FormData) {
   });
 
   if (staffError) {
+    await removeProfilePhoto(supabase, photoPath);
+    await supabase.from("profiles").delete().eq("id", profile.id);
     redirectWithError(
       "/admin/manage",
       staffError.code === "23505" ? "trainer-code-exists" : "database-error",
