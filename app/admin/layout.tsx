@@ -3,14 +3,13 @@ import { redirect } from "next/navigation";
 import { adminPanelLogoutAction } from "@/app/actions";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const expectedPassword = process.env.ADMIN_PANEL_PASSWORD;
   const session = cookies().get("luxe_admin_session")?.value;
 
-  if (!expectedPassword) {
+  if (!process.env.ADMIN_PANEL_PASSWORD) {
     redirect("/admin-access?error=missing-password-config");
   }
 
-  if (session !== expectedPassword) {
+  if (session !== "active") {
     redirect("/admin-access");
   }
 

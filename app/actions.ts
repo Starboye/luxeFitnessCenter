@@ -53,6 +53,7 @@ import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase
 import { KioskCheckInResponse } from "@/lib/types";
 import { markMemberAttendance, recordTrainerAttendance } from "@/lib/data";
 
+const ADMIN_SESSION_VALUE = "active";
 const PHOTO_BUCKET = "profile-photos";
 const MAX_PHOTO_SIZE_BYTES = 2 * 1024 * 1024;
 let photoBucketReady = false;
@@ -278,7 +279,7 @@ export async function adminPanelLoginAction(formData: FormData) {
     redirect("/admin-access?error=invalid-password");
   }
 
-  cookies().set("luxe_admin_session", expected, {
+  cookies().set("luxe_admin_session", ADMIN_SESSION_VALUE, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -290,7 +291,13 @@ export async function adminPanelLoginAction(formData: FormData) {
 }
 
 export async function adminPanelLogoutAction() {
-  cookies().delete("luxe_admin_session");
+  cookies().set("luxe_admin_session", "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0
+  });
   redirect("/admin-access");
 }
 

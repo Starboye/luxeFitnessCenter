@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getTrainerDashboardData } from "@/lib/data";
 import { recordTrainerAttendance } from "@/lib/data";
 
@@ -6,6 +7,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function getTrainerCodeFromRequest(request: Request) {
+  const cookieStore = cookies();
+  const directCookie = cookieStore.get("luxe_trainer_session")?.value;
+  if (directCookie) {
+    return directCookie;
+  }
+
   const cookieHeader = request.headers.get("cookie") ?? "";
   const match = cookieHeader.match(/luxe_trainer_session=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : "";

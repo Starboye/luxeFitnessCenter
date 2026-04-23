@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-
 export default function TrainerAccessPage() {
-  const router = useRouter();
   const [trainerCode, setTrainerCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -34,8 +31,7 @@ export default function TrainerAccessPage() {
       return;
     }
 
-    router.push("/trainer");
-    router.refresh();
+    window.location.href = "/trainer";
   };
 
   return (
