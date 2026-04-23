@@ -31,6 +31,12 @@ type PackageOption = {
   active: boolean;
 };
 
+type TrainerOption = {
+  id: string;
+  staff_code: string;
+  profiles?: { full_name?: string | null } | null;
+};
+
 function createAdminClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false }
@@ -47,6 +53,8 @@ function getStatusMessage(status?: string) {
       return "New gym package added successfully.";
     case "payment-recorded":
       return "Payment has been recorded successfully.";
+    case "member-updated":
+      return "Member details updated successfully.";
     default:
       return null;
   }
@@ -89,16 +97,19 @@ function getErrorMessage(error?: string, detail?: string) {
 export default async function AdminManagePage({ searchParams }: ManagePageProps) {
   let members: MemberOption[] = [];
   let packages: PackageOption[] = [];
+  let trainers: TrainerOption[] = [];
 
   if (isSupabaseConfigured() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     const supabase = createAdminClient();
-    const [{ data: memberRows }, { data: packageRows }] = await Promise.all([
+    const [{ data: memberRows }, { data: packageRows }, { data: trainerRows }] = await Promise.all([
       supabase.from("members").select("id, member_code, profiles(full_name)").order("member_code"),
-      supabase.from("membership_packages").select("id, name, duration_days, price, active").order("created_at", { ascending: false })
+      supabase.from("membership_packages").select("id, name, duration_days, price, active").order("created_at", { ascending: false }),
+      supabase.from("staff").select("id, staff_code, profiles(full_name)").eq("role", "trainer").eq("active", true).order("staff_code")
     ]);
 
     members = (memberRows as MemberOption[] | null) ?? [];
     packages = (packageRows as PackageOption[] | null) ?? [];
+    trainers = (trainerRows as TrainerOption[] | null) ?? [];
   }
 
   const statusMessage = getStatusMessage(searchParams?.status);
@@ -166,6 +177,14 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
                 Member photo
                 <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" style={inputStyle} />
               </label>
+              <select name="personalTrainerId" defaultValue="" style={inputStyle}>
+                <option value="">No Personal Trainer</option>
+                {trainers.map((trainer) => (
+                  <option key={trainer.id} value={trainer.id}>
+                    {trainer.staff_code} - {trainer.profiles?.full_name ?? "Trainer"}
+                  </option>
+                ))}
+              </select>
               <select name="packageId" required defaultValue="" style={inputStyle}>
                 <option value="" disabled>Select gym package</option>
                 {packages.filter((pkg) => pkg.active).map((pkg) => (

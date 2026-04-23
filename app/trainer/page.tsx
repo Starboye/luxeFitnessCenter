@@ -202,6 +202,7 @@ export default function TrainerPage() {
         <Link href="/" className="sidebar-brand">LUXE <span>COACH</span></Link>
         <nav>
           <Link href="/trainer" className="nav-link active">DASHBOARD</Link>
+          <Link href="/trainer/search" className="nav-link">SEARCH</Link>
           <Link href="/check-in" className="nav-link">MEMBER CHECK-IN</Link>
           <Link href="/kiosk" className="nav-link">SHARED KIOSK</Link>
           <Link href="/" className="nav-link">HOME</Link>

@@ -13,6 +13,7 @@ create table if not exists members (
   id uuid primary key default uuid_generate_v4(),
   profile_id uuid references profiles(id) on delete cascade,
   member_code text unique not null,
+  personal_trainer_id uuid references staff(id) on delete set null,
   active boolean not null default true,
   joined_at timestamptz not null default now()
 );

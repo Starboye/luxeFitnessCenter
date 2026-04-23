@@ -547,12 +547,16 @@ import {
   AdminDashboardData,
   AlertItem,
   AttendanceEvent,
+  AttendanceHeatPoint,
   DashboardStats,
   KioskCheckInResponse,
   Member,
   Membership,
   Payment,
+  PersonProfileData,
+  PersonSearchResult,
   Staff,
+  TrendPoint,
   TrainerDashboardData
 } from "@/lib/types";
 import { mockAdminDashboardData, mockMembers, mockTrainerDashboardData } from "@/lib/mock-data";
@@ -581,6 +585,25 @@ function getLatestMembershipForMember(memberships: Membership[], memberId: strin
   return memberships
     .filter((membership) => membership.memberId === memberId)
     .sort((left, right) => new Date(right.endDate).getTime() - new Date(left.endDate).getTime())[0];
+}
+
+function getCurrentMembershipForMember(memberships: Membership[], memberId: string) {
+  const related = memberships
+    .filter((membership) => membership.memberId === memberId)
+    .sort((left, right) => new Date(right.endDate).getTime() - new Date(left.endDate).getTime());
+
+  return related.find((membership) => membership.status === "active" || membership.status === "expiring") ?? related[0];
+}
+
+function getAttendanceTargetForMembership(membership?: Membership) {
+  if (!membership) {
+    return ATTENDANCE_TARGET;
+  }
+
+  const start = new Date(`${membership.startDate}T00:00:00Z`);
+  const end = new Date(`${membership.endDate}T00:00:00Z`);
+  const durationDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  return Math.max(12, Math.round(durationDays / 2));
 }
 
 function getAttendanceStatusLabel(result: string) {
@@ -719,6 +742,58 @@ async function getMemberAttendanceStats(memberId: string) {
   };
 }
 
+function buildAttendanceStatsMap(events: Array<{ actor_id: string; occurred_at: string }>) {
+  const byMember = new Map<string, string[]>();
+
+  for (const event of events) {
+    const existing = byMember.get(event.actor_id) ?? [];
+    existing.push(event.occurred_at);
+    byMember.set(event.actor_id, existing);
+  }
+
+  const stats = new Map<string, { streak: number; attended: number; lastCheckIn?: string; attendanceCalendar: AttendanceHeatPoint[]; streakTrend: TrendPoint[] }>();
+
+  byMember.forEach((dates, memberId) => {
+    const sorted = [...dates].sort((left, right) => right.localeCompare(left));
+    const groupedByDay = new Map<string, number>();
+
+    sorted.forEach((value) => {
+      const day = value.slice(0, 10);
+      groupedByDay.set(day, (groupedByDay.get(day) ?? 0) + 1);
+    });
+
+    const uniqueDays = [...groupedByDay.keys()].sort((left, right) => right.localeCompare(left));
+    const monthlyGroups = new Map<string, number>();
+    uniqueDays.forEach((day) => {
+      const month = day.slice(0, 7);
+      monthlyGroups.set(month, (monthlyGroups.get(month) ?? 0) + 1);
+    });
+
+    stats.set(memberId, {
+      streak: calculateStreakFromEvents(sorted),
+      attended: sorted.length,
+      lastCheckIn: sorted[0],
+      attendanceCalendar: [...groupedByDay.entries()].map(([date, count]) => ({ date, count })).sort((left, right) => left.date.localeCompare(right.date)),
+      streakTrend: [...monthlyGroups.entries()].map(([label, value]) => ({ label, value })).sort((left, right) => left.label.localeCompare(right.label))
+    });
+  });
+
+  return stats;
+}
+
+function buildFinancialTrend(payments: Payment[]): TrendPoint[] {
+  const grouped = new Map<string, number>();
+  payments.forEach((payment) => {
+    const label = payment.paidOn.slice(0, 7);
+    grouped.set(label, (grouped.get(label) ?? 0) + payment.amount);
+  });
+
+  return [...grouped.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .slice(-6);
+}
+
 // --- Core Data Fetcher ---
 
 export async function getAdminDashboardData(targetDate?: string): Promise<AdminDashboardData> {
@@ -739,10 +814,11 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
     { data: paymentRows },
     { data: alertRows },
     { data: eventRows },
-    { data: dailyAttendance }
+    { data: dailyAttendance },
+    { data: memberSuccessEvents }
   ] = await Promise.all([
-    supabase.from("members").select("*, profiles(full_name, phone, photo_path)").order("joined_at", { ascending: false }),
-    supabase.from("staff").select("*, profiles(full_name, email, photo_path)").order("role").order("staff_code"),
+    supabase.from("members").select("*, profiles(full_name, phone, email, photo_path)").order("joined_at", { ascending: false }),
+    supabase.from("staff").select("*, profiles(full_name, email, phone, photo_path)").order("role").order("staff_code"),
     supabase.from("memberships").select("*").order("end_date", { ascending: false }),
     supabase.from("payments").select("*").order("paid_on", { ascending: false }),
     supabase.from("alert_queue").select("*").order("created_at", { ascending: false }),
@@ -751,7 +827,8 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
       .gte("occurred_at", `${dateStr}T00:00:00Z`)
       .lte("occurred_at", `${dateStr}T23:59:59Z`)
       .order("occurred_at", { ascending: false }),
-    supabase.from("daily_attendance").select("*")
+    supabase.from("daily_attendance").select("*"),
+    supabase.from("attendance_events").select("actor_id, occurred_at").eq("actor_type", "member").eq("result", "success").order("occurred_at", { ascending: false })
   ]);
 
   // 2. Map Memberships & Payments with type safety
@@ -776,23 +853,41 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
   }));
 
   // 3. Transform Members (Handling the nested profile)
+  const memberAttendanceStats = buildAttendanceStatsMap((memberSuccessEvents || []) as Array<{ actor_id: string; occurred_at: string }>);
+  const trainerNameMap = new Map(
+    (staffRows || [])
+      .filter((staff: any) => staff.role === "trainer")
+      .map((staff: any) => [staff.id, { name: staff.profiles?.full_name || "Trainer", code: staff.staff_code }])
+  );
+
   const membersList: Member[] = (memberRows || []).map((m: any) => {
-    const latest = getLatestMembershipForMember(memberships, m.id);
-    const daysLeft = latest ? Math.max(0, Math.ceil((new Date(latest.endDate).getTime() - Date.now()) / 86400000)) : 0;
+    const currentMembership = getCurrentMembershipForMember(memberships, m.id);
+    const attendanceStats = memberAttendanceStats.get(m.id);
+    const daysLeft = currentMembership ? Math.max(0, Math.ceil((new Date(`${currentMembership.endDate}T23:59:59Z`).getTime() - Date.now()) / 86400000)) : 0;
+    const assignedTrainer = trainerNameMap.get(m.personal_trainer_id);
     
     return {
       id: m.id,
+      profileId: m.profile_id || undefined,
       memberCode: m.member_code,
       fullName: m.profiles?.full_name || "Unknown Member",
       phone: m.profiles?.phone || undefined,
+      email: m.profiles?.email || undefined,
       photoPath: m.profiles?.photo_path || undefined,
       active: m.active,
       joinedAt: m.joined_at,
-      currentPlan: latest?.planName || "No active plan",
+      currentPlan: currentMembership?.planName || "No active plan",
+      personalTrainerId: m.personal_trainer_id || undefined,
+      personalTrainerName: assignedTrainer?.name,
+      hasPersonalTrainer: Boolean(assignedTrainer),
       daysLeft,
-      dueAmount: latest?.dueAmount || 0,
-      streak: 0, 
-      attendanceProgress: { attended: 0, target: ATTENDANCE_TARGET }
+      dueAmount: currentMembership?.dueAmount || 0,
+      streak: attendanceStats?.streak || 0,
+      attendanceProgress: {
+        attended: attendanceStats?.attended || 0,
+        target: getAttendanceTargetForMembership(currentMembership)
+      },
+      lastCheckIn: attendanceStats?.lastCheckIn
     };
   });
 
@@ -834,9 +929,11 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
     .filter((s: any) => s.role === 'trainer')
     .map((s: any) => ({
       id: s.id,
+      profileId: s.profile_id || undefined,
       staffCode: s.staff_code,
       fullName: s.profiles?.full_name || "Trainer",
       email: s.profiles?.email || undefined,
+      phone: s.profiles?.phone || undefined,
       photoPath: s.profiles?.photo_path || undefined,
       role: s.role,
       active: s.active,
@@ -859,7 +956,16 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
       })
       .reduce((acc, p) => acc + p.amount, 0),
     outstandingDues: memberships.reduce((acc, m) => acc + m.dueAmount, 0),
-    profitEstimate: 0, // Calculate as needed
+    profitEstimate: Math.max(
+      payments
+        .filter(p => {
+          const paidOn = new Date(p.paidOn);
+          const now = new Date();
+          return paidOn.getMonth() === now.getMonth() && paidOn.getFullYear() === now.getFullYear();
+        })
+        .reduce((acc, p) => acc + p.amount, 0) - memberships.reduce((acc, m) => acc + m.dueAmount, 0),
+      0
+    ),
     memberAttendanceToday: attendanceEvents.filter(e => e.actorType === 'member' && e.result === 'Checked In').length,
     trainerAttendanceToday: (dailyAttendance || []).filter((row: any) => row.actor_type === "trainer" && row.attendance_date === dateStr).length
   };
@@ -914,8 +1020,10 @@ export async function markMemberAttendance(
     .from("members")
     .select(`
       id,
+      profile_id,
       member_code,
       active,
+      personal_trainer_id,
       profiles (full_name, photo_path),
       memberships (plan_name, end_date, due_amount, status)
     `)
@@ -931,13 +1039,20 @@ export async function markMemberAttendance(
 
   // 2. Check if member is active
   if (!member.active) {
+    const { data: assignedTrainer } = member.personal_trainer_id
+      ? await supabase.from("staff").select("id, profiles(full_name)").eq("id", member.personal_trainer_id).maybeSingle()
+      : { data: null };
     return {
       ok: false,
       message: "Membership is inactive. Please see the front desk.",
       member: {
         id: member.id,
+        profileId: undefined,
         fullName: (member.profiles as any)?.full_name || "Member",
         photoPath: (member.profiles as any)?.photo_path || undefined,
+        personalTrainerId: member.personal_trainer_id || undefined,
+        personalTrainerName: (assignedTrainer as any)?.profiles?.full_name || undefined,
+        hasPersonalTrainer: Boolean(assignedTrainer),
         // Map other fields as needed for the UI
       } as any
     };
@@ -958,6 +1073,9 @@ export async function markMemberAttendance(
 
   // 4. Prepare UI-friendly data
   const latestMembership = (member.memberships as any[])?.[0];
+  const { data: assignedTrainer } = member.personal_trainer_id
+    ? await supabase.from("staff").select("id, profiles(full_name)").eq("id", member.personal_trainer_id).maybeSingle()
+    : { data: null };
   const attendanceStats = await getMemberAttendanceStats(member.id);
   const daysLeft = latestMembership 
     ? Math.max(0, Math.ceil((new Date(latestMembership.end_date).getTime() - Date.now()) / 86400000)) 
@@ -968,10 +1086,14 @@ export async function markMemberAttendance(
     message: "Check-in successful. Have a great workout!",
     member: {
       id: member.id,
+      profileId: undefined,
       memberCode: member.member_code,
       fullName: (member.profiles as any)?.full_name || "Member",
       photoPath: (member.profiles as any)?.photo_path || undefined,
       currentPlan: latestMembership?.plan_name || "Standard",
+      personalTrainerId: member.personal_trainer_id || undefined,
+      personalTrainerName: (assignedTrainer as any)?.profiles?.full_name || undefined,
+      hasPersonalTrainer: Boolean(assignedTrainer),
       daysLeft: daysLeft,
       dueAmount: latestMembership?.due_amount || 0,
       streak: attendanceStats.streak,
@@ -1012,10 +1134,12 @@ export async function findMemberByCode(memberCode: string) {
     .from("members")
     .select(`
       id,
+      profile_id,
       member_code,
       active,
+      personal_trainer_id,
       joined_at,
-      profiles (full_name, phone, photo_path),
+      profiles (full_name, phone, email, photo_path),
       memberships (plan_name, end_date, due_amount)
     `)
     .eq("member_code", memberCode.toUpperCase())
@@ -1027,24 +1151,181 @@ export async function findMemberByCode(memberCode: string) {
 
   const attendanceStats = await getMemberAttendanceStats(member.id);
   const latestMembership = (member.memberships as any[])?.[0];
+  const { data: assignedTrainer } = member.personal_trainer_id
+    ? await supabase.from("staff").select("id, profiles(full_name)").eq("id", member.personal_trainer_id).maybeSingle()
+    : { data: null };
   const daysLeft = latestMembership
     ? Math.max(0, Math.ceil((new Date(latestMembership.end_date).getTime() - Date.now()) / 86400000))
     : 0;
 
   return {
     id: member.id,
+    profileId: member.profile_id || undefined,
     memberCode: member.member_code,
     fullName: (member.profiles as any)?.full_name || "Member",
     phone: (member.profiles as any)?.phone || undefined,
+    email: (member.profiles as any)?.email || undefined,
     photoPath: (member.profiles as any)?.photo_path || undefined,
     active: member.active,
     joinedAt: member.joined_at,
     currentPlan: latestMembership?.plan_name || "Standard",
+    personalTrainerId: member.personal_trainer_id || undefined,
+    personalTrainerName: (assignedTrainer as any)?.profiles?.full_name || undefined,
+    hasPersonalTrainer: Boolean(assignedTrainer),
     daysLeft,
     dueAmount: latestMembership?.due_amount || 0,
     streak: attendanceStats.streak,
     attendanceProgress: { attended: attendanceStats.attended, target: ATTENDANCE_TARGET },
     lastCheckIn: attendanceStats.lastCheckIn
+  };
+}
+
+export async function searchPeople(query: string): Promise<PersonSearchResult[]> {
+  const value = query.trim().toLowerCase();
+  if (!value) {
+    return [];
+  }
+
+  const dashboard = await getAdminDashboardData();
+  const memberResults = dashboard.members
+    .filter((member) =>
+      member.fullName.toLowerCase().includes(value) ||
+      member.memberCode.toLowerCase().includes(value) ||
+      member.phone?.replace(/\D/g, "").includes(query.replace(/\D/g, ""))
+    )
+    .map((member) => ({
+      id: member.id,
+      type: "member" as const,
+      fullName: member.fullName,
+      phone: member.phone,
+      code: member.memberCode,
+      photoPath: member.photoPath,
+      roleLabel: member.currentPlan
+    }));
+
+  const trainerResults = dashboard.trainers
+    .filter((trainer) =>
+      trainer.fullName.toLowerCase().includes(value) ||
+      trainer.staffCode?.toLowerCase().includes(value) ||
+      trainer.phone?.replace(/\D/g, "").includes(query.replace(/\D/g, ""))
+    )
+    .map((trainer) => ({
+      id: trainer.id,
+      type: "trainer" as const,
+      fullName: trainer.fullName,
+      phone: trainer.phone,
+      code: trainer.staffCode ?? trainer.id,
+      photoPath: trainer.photoPath,
+      roleLabel: trainer.specialization ?? "Trainer"
+    }));
+
+  return [...memberResults, ...trainerResults].slice(0, 12);
+}
+
+export async function getPersonProfile(id: string, type: "member" | "trainer"): Promise<PersonProfileData | null> {
+  const dashboard = await getAdminDashboardData();
+  const supabase = createAdminClient();
+
+  if (type === "member") {
+    const member = dashboard.members.find((entry) => entry.id === id);
+    if (!member) {
+      return null;
+    }
+
+    const { data: attendanceEvents } = await supabase
+      .from("attendance_events")
+      .select("occurred_at")
+      .eq("actor_id", id)
+      .eq("actor_type", "member")
+      .eq("result", "success")
+      .order("occurred_at", { ascending: false });
+
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("member_id", id)
+      .order("paid_on", { ascending: false });
+
+    const statsMap = buildAttendanceStatsMap(
+      ((attendanceEvents || []) as Array<{ occurred_at: string }>).map((event) => ({ actor_id: id, occurred_at: event.occurred_at }))
+    );
+    const attendanceStats = statsMap.get(id);
+    const memberPayments = ((payments || []) as any[]).map((row) => ({
+      id: row.id,
+      memberId: row.member_id,
+      amount: toNumber(row.amount),
+      method: row.method,
+      paidOn: row.paid_on,
+      notes: row.notes ?? undefined,
+      receivedBy: row.received_by || "system"
+    })) as Payment[];
+
+    return {
+      result: {
+        id: member.id,
+        type: "member",
+        fullName: member.fullName,
+        phone: member.phone,
+        code: member.memberCode,
+        photoPath: member.photoPath,
+        roleLabel: member.currentPlan
+      },
+      member: {
+        ...member,
+        streak: attendanceStats?.streak ?? member.streak,
+        attendanceProgress: {
+          ...member.attendanceProgress,
+          attended: attendanceStats?.attended ?? member.attendanceProgress.attended
+        },
+        lastCheckIn: attendanceStats?.lastCheckIn ?? member.lastCheckIn
+      },
+      attendanceCalendar: attendanceStats?.attendanceCalendar ?? [],
+      streakTrend: attendanceStats?.streakTrend ?? [],
+      financialTrend: buildFinancialTrend(memberPayments),
+      totalPaid: memberPayments.reduce((sum, payment) => sum + payment.amount, 0),
+      totalDue: member.dueAmount,
+      recentPayments: memberPayments.slice(0, 8)
+    };
+  }
+
+  const trainer = dashboard.trainers.find((entry) => entry.id === id);
+  if (!trainer) {
+    return null;
+  }
+
+  const { data: attendanceEvents } = await supabase
+    .from("attendance_events")
+    .select("occurred_at")
+    .eq("actor_id", id)
+    .eq("actor_type", "trainer")
+    .eq("result", "success")
+    .order("occurred_at", { ascending: false });
+
+  const groupedByDay = new Map<string, number>();
+  (attendanceEvents || []).forEach((event: any) => {
+    const day = String(event.occurred_at).slice(0, 10);
+    groupedByDay.set(day, (groupedByDay.get(day) ?? 0) + 1);
+  });
+
+  const groupedByMonth = new Map<string, number>();
+  groupedByDay.forEach((count, day) => {
+    const month = day.slice(0, 7);
+    groupedByMonth.set(month, (groupedByMonth.get(month) ?? 0) + count);
+  });
+
+  return {
+    result: {
+      id: trainer.id,
+      type: "trainer",
+      fullName: trainer.fullName,
+      phone: trainer.phone,
+      code: trainer.staffCode ?? trainer.id,
+      photoPath: trainer.photoPath,
+      roleLabel: trainer.specialization ?? "Trainer"
+    },
+    trainer,
+    attendanceCalendar: [...groupedByDay.entries()].map(([date, count]) => ({ date, count })).sort((left, right) => left.date.localeCompare(right.date)),
+    streakTrend: [...groupedByMonth.entries()].map(([label, value]) => ({ label, value })).sort((left, right) => left.label.localeCompare(right.label))
   };
 }
 

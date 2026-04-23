@@ -354,6 +354,7 @@ export default function AdminPage() {
         </Link>
         <nav>
           <Link href="/admin" className="sidebar-link active">DASHBOARD</Link>
+          <Link href="/admin/search" className="sidebar-link">SEARCH</Link>
           <Link href="/admin/manage" className="sidebar-link">MANAGE RECORDS</Link>
           <Link href="/kiosk" className="sidebar-link">OPEN KIOSK</Link>
           <Link href="/trainer" className="sidebar-link">STAFF PORTAL</Link>

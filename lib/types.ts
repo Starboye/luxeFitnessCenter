@@ -8,6 +8,7 @@ export type AlertSeverity = "info" | "warning" | "critical";
 
 export interface Profile {
   id: string;
+  profileId?: string;
   fullName: string;
   email?: string;
   phone?: string;
@@ -19,6 +20,9 @@ export interface Member extends Profile {
   active: boolean;
   joinedAt: string;
   currentPlan: string;
+  personalTrainerId?: string;
+  personalTrainerName?: string;
+  hasPersonalTrainer?: boolean;
   daysLeft: number;
   dueAmount: number;
   streak: number;
@@ -117,4 +121,36 @@ export interface TrainerDashboardData {
   trainer: Staff;
   visibleMembers: Member[];
   recentEvents: AttendanceEvent[];
+}
+
+export interface AttendanceHeatPoint {
+  date: string;
+  count: number;
+}
+
+export interface TrendPoint {
+  label: string;
+  value: number;
+}
+
+export interface PersonSearchResult {
+  id: string;
+  type: "member" | "trainer";
+  fullName: string;
+  phone?: string;
+  code: string;
+  photoPath?: string;
+  roleLabel: string;
+}
+
+export interface PersonProfileData {
+  result: PersonSearchResult;
+  member?: Member;
+  trainer?: Staff;
+  attendanceCalendar: AttendanceHeatPoint[];
+  streakTrend: TrendPoint[];
+  financialTrend?: TrendPoint[];
+  totalPaid?: number;
+  totalDue?: number;
+  recentPayments?: Payment[];
 }

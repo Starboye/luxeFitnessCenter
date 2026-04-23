@@ -304,6 +304,7 @@ export async function createMemberAction(formData: FormData) {
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const packageId = String(formData.get("packageId") ?? "").trim();
+  const personalTrainerId = String(formData.get("personalTrainerId") ?? "").trim();
   const membershipStatus = String(formData.get("membershipStatus") ?? "active").trim();
   const startDate = String(formData.get("startDate") ?? "").trim();
   const dueAmount = parseMoney(formData.get("dueAmount"));
@@ -379,6 +380,7 @@ export async function createMemberAction(formData: FormData) {
     .insert({
       profile_id: profile.id,
       member_code: memberCode,
+      personal_trainer_id: personalTrainerId || null,
       active: membershipStatus !== "expired"
     })
     .select("id")
@@ -419,6 +421,78 @@ export async function createMemberAction(formData: FormData) {
   revalidatePath("/admin");
   revalidatePath("/admin/manage");
   redirect("/admin/manage?status=member-created");
+}
+
+export async function updateMemberAction(formData: FormData) {
+  if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    redirect("/admin/manage?error=supabase-not-configured");
+  }
+
+  const memberId = String(formData.get("memberId") ?? "").trim();
+  const profileId = String(formData.get("profileId") ?? "").trim();
+  const fullName = String(formData.get("fullName") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const personalTrainerId = String(formData.get("personalTrainerId") ?? "").trim();
+  const membershipStatus = String(formData.get("membershipStatus") ?? "").trim();
+  const dueAmount = parseMoney(formData.get("dueAmount"));
+
+  if (!memberId || !profileId || !fullName || !phone || dueAmount === null) {
+    redirectWithError("/admin/search", "missing-required-fields");
+  }
+
+  const supabase = createAdminClient();
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      phone,
+      email: email || null
+    })
+    .eq("id", profileId);
+
+  if (profileError) {
+    redirectWithError("/admin/search", "database-error", formatDbError(profileError));
+  }
+
+  const { error: memberError } = await supabase
+    .from("members")
+    .update({
+      personal_trainer_id: personalTrainerId || null
+    })
+    .eq("id", memberId);
+
+  if (memberError) {
+    redirectWithError("/admin/search", "database-error", formatDbError(memberError));
+  }
+
+  const { data: latestMembership } = await supabase
+    .from("memberships")
+    .select("id")
+    .eq("member_id", memberId)
+    .order("end_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestMembership) {
+    const { error: membershipError } = await supabase
+      .from("memberships")
+      .update({
+        due_amount: dueAmount,
+        status: membershipStatus || undefined
+      })
+      .eq("id", latestMembership.id);
+
+    if (membershipError) {
+      redirectWithError("/admin/search", "database-error", formatDbError(membershipError));
+    }
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/search");
+  revalidatePath("/trainer");
+  revalidatePath("/check-in");
+  redirect("/admin/search?status=member-updated");
 }
 
 export async function createTrainerAction(formData: FormData) {

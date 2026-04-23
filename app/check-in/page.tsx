@@ -274,6 +274,19 @@ export default function CheckInPage() {
           height: 100%;
           object-fit: cover;
         }
+        .pt-badge {
+          display: inline-flex;
+          margin-top: 0.55rem;
+          padding: 0.35rem 0.6rem;
+          border-radius: 999px;
+          background: rgba(212, 175, 55, 0.14);
+          border: 1px solid rgba(212, 175, 55, 0.25);
+          color: #f7d77b;
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
         .loader {
           border: 3px solid rgba(255,255,255,0.1);
           border-top: 3px solid var(--accent);
@@ -423,6 +436,7 @@ export default function CheckInPage() {
                   <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--accent)" }}>
                     PLAN: {state.member.currentPlan}
                   </div>
+                  {state.member.personalTrainerName ? <div className="pt-badge">PT: {state.member.personalTrainerName}</div> : null}
                 </div>
               </div>
             </div>
@@ -438,6 +452,7 @@ export default function CheckInPage() {
                   <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--accent)" }}>
                     PLAN: {verifiedMember.currentPlan}
                   </div>
+                  {verifiedMember.personalTrainerName ? <div className="pt-badge">PT: {verifiedMember.personalTrainerName}</div> : null}
                 </div>
               </div>
             </div>
