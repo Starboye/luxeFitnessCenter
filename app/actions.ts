@@ -191,24 +191,31 @@ async function uploadProfilePhoto(
   folder: "members" | "trainers",
   recordId: string
 ) {
-  if (!(file instanceof File) || file.size === 0) {
+  const maybeFile = file as {
+    size?: number;
+    type?: string;
+    name?: string;
+    arrayBuffer?: () => Promise<ArrayBuffer>;
+  } | null;
+
+  if (!maybeFile || typeof maybeFile.arrayBuffer !== "function" || !maybeFile.size) {
     return null;
   }
 
-  if (!file.type.startsWith("image/")) {
+  if (!maybeFile.type?.startsWith("image/")) {
     throw new Error("Only image uploads are supported.");
   }
 
-  if (file.size > MAX_PHOTO_SIZE_BYTES) {
+  if (maybeFile.size > MAX_PHOTO_SIZE_BYTES) {
     throw new Error("Image size must stay under 2MB.");
   }
 
-  const extension = sanitizeFileExtension(file.name, file.type);
+  const extension = sanitizeFileExtension(maybeFile.name ?? "photo.jpg", maybeFile.type);
   const photoPath = `${folder}/${recordId}.${extension}`;
-  const arrayBuffer = await file.arrayBuffer();
+  const arrayBuffer = await maybeFile.arrayBuffer();
 
   const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(photoPath, arrayBuffer, {
-    contentType: file.type,
+    contentType: maybeFile.type,
     upsert: true
   });
 
