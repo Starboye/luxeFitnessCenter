@@ -11,6 +11,7 @@ export interface Profile {
   fullName: string;
   email?: string;
   phone?: string;
+  photoPath?: string;
 }
 
 export interface Member extends Profile {

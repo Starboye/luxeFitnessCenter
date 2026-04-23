@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { KioskCheckInResponse } from "@/lib/types";
+import { getInitials, getPhotoUrl } from "@/lib/utils";
 
 const heroVideos = [
   "/media/carrosal_1.mp4",
@@ -72,20 +73,8 @@ export default function KioskPage() {
               z-index: 0;
               pointer-events: none;
             }
-            .background-carousel {
-              position: absolute;
-              inset: 0;
-              z-index: 0;
-            }
-            .background-video {
-              position: absolute;
-              inset: 0;
-              width: 100%;
-              height: 100%;
-              object-fit: cover;
-              opacity: 0;
-              animation: backgroundCarousel 18s infinite;
-            }
+            .background-carousel { position: absolute; inset: 0; z-index: 0; }
+            .background-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; animation: backgroundCarousel 18s infinite; }
             .kiosk-header {
               padding: 1.5rem 5%;
               display: flex;
@@ -99,12 +88,7 @@ export default function KioskPage() {
             }
             .logo { font-weight: 900; text-decoration: none; color: white; letter-spacing: -0.5px; }
             .logo span { color: var(--accent); }
-            .header-links {
-              display: flex;
-              align-items: center;
-              gap: 1rem;
-              flex-wrap: wrap;
-            }
+            .header-links { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
             .main-content {
               flex: 1;
               display: grid;
@@ -141,9 +125,7 @@ export default function KioskPage() {
               text-align: center;
               letter-spacing: 4px;
               outline: none;
-              transition: 0.3s;
             }
-            .kiosk-input:focus { border-color: var(--accent); box-shadow: 0 0 20px rgba(255, 62, 62, 0.2); }
             .btn-checkin {
               width: 100%;
               padding: 1.5rem;
@@ -154,9 +136,7 @@ export default function KioskPage() {
               font-weight: 900;
               font-size: 1.2rem;
               cursor: pointer;
-              transition: 0.2s;
             }
-            .btn-checkin:active { transform: scale(0.98); }
             .btn-checkin:disabled { opacity: 0.5; }
             .trainer-link {
               display: block;
@@ -170,16 +150,23 @@ export default function KioskPage() {
               font-weight: 800;
               background: rgba(255,255,255,0.03);
             }
-            .result-view { text-align: center; animation: fadeIn 0.4s ease-out; }
-            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-            @keyframes backgroundCarousel {
-              0% { opacity: 0; }
-              6% { opacity: 1; }
-              27% { opacity: 1; }
-              33% { opacity: 0; }
-              100% { opacity: 0; }
+            .result-view { text-align: center; }
+            .member-photo {
+              width: 104px;
+              height: 104px;
+              margin: 0 auto 1rem;
+              border-radius: 50%;
+              overflow: hidden;
+              border: 2px solid var(--border);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: 900;
+              font-size: 1.4rem;
+              background: rgba(255,255,255,0.04);
             }
-            .streak-badge { font-size: 4rem; margin-bottom: 1rem; }
+            .member-photo img { width: 100%; height: 100%; object-fit: cover; }
+            .streak-badge { font-size: 1rem; letter-spacing: 0.12em; color: var(--gold); font-weight: 800; margin-bottom: 1rem; }
             .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem; }
             .info-item { background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 8px; border: 1px solid var(--border); }
             .info-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 0.5rem; }
@@ -193,6 +180,13 @@ export default function KioskPage() {
             .list { list-style: none; padding: 0; margin-top: 2rem; }
             .list li { display: flex; justify-content: space-between; padding: 1rem 0; border-bottom: 1px solid var(--border); color: var(--text-dim); font-size: 0.9rem; gap: 1rem; }
             .list li span:last-child { color: white; font-weight: 700; }
+            @keyframes backgroundCarousel {
+              0% { opacity: 0; }
+              6% { opacity: 1; }
+              27% { opacity: 1; }
+              33% { opacity: 0; }
+              100% { opacity: 0; }
+            }
             @media (max-width: 968px) {
               .main-content { grid-template-columns: 1fr; padding: 2rem 5%; }
               .glass-card { display: none; }
@@ -221,11 +215,14 @@ export default function KioskPage() {
       <header className="kiosk-header">
         <Link href="/" className="logo">LUXE <span>KIOSK</span></Link>
         <div className="header-links">
+          <Link href="/" style={{ color: "var(--text-dim)", textDecoration: "none", fontSize: "0.8rem", fontWeight: 700 }}>
+            HOME
+          </Link>
           <Link href="/trainer-access" style={{ color: "white", textDecoration: "none", fontSize: "0.8rem", fontWeight: 700 }}>
             TRAINER LOGIN
           </Link>
           <Link href="/check-in" style={{ color: "var(--text-dim)", textDecoration: "none", fontSize: "0.8rem", fontWeight: 700 }}>
-            SWITCH TO QR FLOW
+            MEMBER CHECK-IN
           </Link>
         </div>
       </header>
@@ -258,7 +255,10 @@ export default function KioskPage() {
             </>
           ) : (
             <div className="result-view">
-              <div className="streak-badge">🔥 {result.member.streak}</div>
+              <div className="member-photo">
+                {result.member.photoPath ? <img src={getPhotoUrl(result.member.photoPath) ?? ""} alt={result.member.fullName} /> : getInitials(result.member.fullName)}
+              </div>
+              <div className="streak-badge">STREAK {result.member.streak}</div>
               <div className="eyebrow" style={{ color: result.ok ? "var(--success)" : "var(--accent)" }}>{result.ok ? "Confirmed" : "Attention"}</div>
               <h1 style={{ marginBottom: "0.5rem" }}>{result.member.fullName}</h1>
               <p style={{ color: "var(--text-dim)" }}>{result.member.currentPlan}</p>
@@ -272,7 +272,7 @@ export default function KioskPage() {
                 <div className="info-item">
                   <div className="info-label">Dues</div>
                   <div className="info-value" style={{ color: result.member.dueAmount > 0 ? "var(--accent)" : "var(--gold)" }}>
-                    ₹{result.member.dueAmount}
+                    Rs {result.member.dueAmount}
                   </div>
                 </div>
               </div>
@@ -286,15 +286,15 @@ export default function KioskPage() {
 
         <article className="glass-card">
           <div className="eyebrow">Instant Visibility</div>
-          <h3>Operational Intelligence.</h3>
+          <h3>Training Floor Snapshot.</h3>
           <p style={{ color: "var(--text-dim)", marginTop: "1rem" }}>
-            Check-ins are timestamped and synced to the <strong>Luxe Command Center</strong> for real-time occupancy and payment tracking.
+            Check-ins update member attendance, dues visibility, and trainer-ready workout context the moment someone steps onto the floor.
           </p>
           <ul className="list">
-            <li><span>Plan Status</span><span>Active</span></li>
-            <li><span>Remaining Validity</span><span>Synced</span></li>
-            <li><span>Due Notifications</span><span>Automated</span></li>
-            <li><span>Streak Tracking</span><span>Live</span></li>
+            <li><span>Member photo</span><span>Ready</span></li>
+            <li><span>Plan status</span><span>Synced</span></li>
+            <li><span>Days remaining</span><span>Live</span></li>
+            <li><span>Workout streak</span><span>Updated</span></li>
           </ul>
         </article>
       </main>

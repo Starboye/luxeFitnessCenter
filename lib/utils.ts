@@ -23,6 +23,23 @@ export function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+export function getPhotoUrl(photoPath?: string) {
+  if (!photoPath) {
+    return null;
+  }
+
+  return `/api/profile-photo?path=${encodeURIComponent(photoPath)}`;
+}
+
+export function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export function getStatusTone(
   status: "active" | "expiring" | "expired" | "due" | "success" | "duplicate" | "invalid" | "blocked"
 ) {

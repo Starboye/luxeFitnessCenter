@@ -240,7 +240,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client";
 import { AdminDashboardData } from "@/lib/types";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, getInitials, getPhotoUrl } from "@/lib/utils";
 
 const initialData: AdminDashboardData = {
   stats: { totalMembers: 0, activeMembers: 0, activeTrainers: 0, collectionsThisMonth: 0, outstandingDues: 0, profitEstimate: 0, memberAttendanceToday: 0, trainerAttendanceToday: 0 },
@@ -317,7 +317,7 @@ export default function AdminPage() {
         .sidebar-link.active { background: var(--panel); color: var(--accent); border-left: 3px solid var(--accent); }
         .content { flex: 1; padding: 2rem 3rem; }
         
-        /* Search Bar */
+        /* Search Bar  */
         .search-container { margin-bottom: 2rem; position: relative; }
         .global-search { width: 100%; padding: 1rem 1.5rem; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; color: white; font-size: 1rem; outline: none; transition: 0.3s; }
         .global-search:focus { border-color: var(--accent); box-shadow: 0 0 15px rgba(255,62,62,0.1); }
@@ -336,7 +336,8 @@ export default function AdminPage() {
         .att-table th { text-align: left; color: var(--text-dim); font-size: 0.7rem; padding: 1rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
         .att-table td { padding: 1.2rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
         .user-cell { display: flex; align-items: center; gap: 12px; }
-        .avatar { width: 32px; height: 32px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; border: 1px solid var(--border); }
+        .avatar { width: 38px; height: 38px; background: #222; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: bold; border: 1px solid var(--border); overflow: hidden; }
+        .avatar img { width: 100%; height: 100%; object-fit: cover; }
 
         /* Badges */
         .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
@@ -356,6 +357,7 @@ export default function AdminPage() {
           <Link href="/admin/manage" className="sidebar-link">MANAGE RECORDS</Link>
           <Link href="/kiosk" className="sidebar-link">OPEN KIOSK</Link>
           <Link href="/trainer" className="sidebar-link">STAFF PORTAL</Link>
+          <Link href="/" className="sidebar-link">HOME</Link>
         </nav>
       </aside>
 
@@ -440,7 +442,14 @@ export default function AdminPage() {
             <tbody>
               {data.trainers.map((trainer) => (
                 <tr key={trainer.id}>
-                  <td style={{ fontWeight: 800 }}>{trainer.fullName}</td>
+                  <td>
+                    <div className="user-cell">
+                      <div className="avatar">
+                        {trainer.photoPath ? <img src={getPhotoUrl(trainer.photoPath) ?? ""} alt={trainer.fullName} /> : getInitials(trainer.fullName)}
+                      </div>
+                      <div style={{ fontWeight: 800 }}>{trainer.fullName}</div>
+                    </div>
+                  </td>
                   <td>{trainer.staffCode ?? "Not set"}</td>
                   <td>{trainer.specialization ?? "General Floor"}</td>
                   <td>
@@ -484,7 +493,13 @@ export default function AdminPage() {
                   <tr key={event.id}>
                     <td>
                       <div className="user-cell">
-                        <div className="avatar">{(event as any).actorName?.[0] || 'U'}</div>
+                        <div className="avatar">
+                          {(event as any).photoPath ? (
+                            <img src={getPhotoUrl((event as any).photoPath) ?? ""} alt={(event as any).actorName || event.actorType} />
+                          ) : (
+                            getInitials((event as any).actorName || event.actorType)
+                          )}
+                        </div>
                         <div>
                           <div style={{ fontWeight: 800 }}>{(event as any).actorName || event.actorType}</div>
                           <small style={{ color: 'var(--text-dim)' }}>{event.actorType}</small>
@@ -550,8 +565,15 @@ export default function AdminPage() {
               {filteredMembers.map((member) => (
                 <tr key={member.id}>
                   <td>
-                    <div style={{ fontWeight: 800 }}>{member.fullName}</div>
-                    <small style={{ color: 'var(--text-dim)' }}>{member.memberCode}</small>
+                    <div className="user-cell">
+                      <div className="avatar">
+                        {member.photoPath ? <img src={getPhotoUrl(member.photoPath) ?? ""} alt={member.fullName} /> : getInitials(member.fullName)}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{member.fullName}</div>
+                        <small style={{ color: 'var(--text-dim)' }}>{member.memberCode}</small>
+                      </div>
+                    </div>
                   </td>
                   <td>{member.currentPlan}</td>
                   <td>

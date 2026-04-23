@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { TrainerDashboardData } from "@/lib/types";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, getInitials, getPhotoUrl } from "@/lib/utils";
 
 const heroVideos = [
   "/media/carrosal_1.mp4",
@@ -63,10 +63,6 @@ export default function TrainerPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    await submitTrainerLogin();
-  };
-
-  const submitTrainerLogin = async () => {
     const response = await fetch("/api/trainer-auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -82,12 +78,11 @@ export default function TrainerPage() {
       return;
     }
 
-    setIsLoggedIn(true);
-    setLoadError(null);
-
     const dashboardResponse = await fetch("/api/trainer-dashboard", { cache: "no-store" });
     const dashboardPayload = (await dashboardResponse.json()) as TrainerDashboardData;
     setData(dashboardPayload);
+    setIsLoggedIn(true);
+    setLoadError(null);
   };
 
   const logoutTrainer = async () => {
@@ -159,20 +154,8 @@ export default function TrainerPage() {
           z-index: 0;
           pointer-events: none;
         }
-        .background-carousel {
-          position: absolute;
-          inset: 0;
-          z-index: 0;
-        }
-        .background-video {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          opacity: 0;
-          animation: backgroundCarousel 18s infinite;
-        }
+        .background-carousel { position: absolute; inset: 0; z-index: 0; }
+        .background-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; animation: backgroundCarousel 18s infinite; }
         .sidebar {
           width: 240px;
           border-right: 1px solid var(--border);
@@ -202,6 +185,9 @@ export default function TrainerPage() {
         .list { list-style: none; padding: 0; }
         .list-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid var(--border); gap: 1rem; }
         .list-item:last-child { border: none; }
+        .person-row { display: flex; align-items: center; gap: 0.85rem; }
+        .avatar { width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: rgba(255,255,255,0.05); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 800; }
+        .avatar img { width: 100%; height: 100%; object-fit: cover; }
         .badge { font-size: 0.65rem; font-weight: 800; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; }
         .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
         .input-field { width: 100%; background: #000; border: 1px solid var(--border); padding: 0.8rem; border-radius: 6px; color: white; margin-bottom: 1rem; }
@@ -260,8 +246,9 @@ export default function TrainerPage() {
         <Link href="/" className="sidebar-brand">LUXE <span>COACH</span></Link>
         <nav>
           <Link href="/trainer" className="nav-link active">DASHBOARD</Link>
-          <Link href="/check-in" className="nav-link">QR SCANNER</Link>
+          <Link href="/check-in" className="nav-link">MEMBER CHECK-IN</Link>
           <Link href="/kiosk" className="nav-link">SHARED KIOSK</Link>
+          <Link href="/" className="nav-link">HOME</Link>
         </nav>
       </aside>
 
@@ -279,7 +266,7 @@ export default function TrainerPage() {
           <div className="metric-card">
             <div className="metric-label">Trainer Status</div>
             <div className="metric-value" style={{ color: "var(--success)" }}>{(data.trainer.todayStatus ?? "offline").toUpperCase()}</div>
-            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{data.trainer.specialization ?? "Live trainer feed"}</div>
+            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{data.trainer.specialization ?? "Gym floor support"}</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Members on Floor</div>
@@ -295,10 +282,15 @@ export default function TrainerPage() {
 
         <article className="panel">
           <div className="section-header">
-            <div>
-              <div className="eyebrow">Self Attendance</div>
-              <h2 style={{ margin: 0 }}>{data.trainer.fullName}</h2>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "0.3rem" }}>{data.trainer.staffCode ?? "No Luxe ID"}</div>
+            <div className="person-row">
+              <div className="avatar">
+                {data.trainer.photoPath ? <img src={getPhotoUrl(data.trainer.photoPath) ?? ""} alt={data.trainer.fullName} /> : getInitials(data.trainer.fullName)}
+              </div>
+              <div>
+                <div className="eyebrow">Self Attendance</div>
+                <h2 style={{ margin: 0 }}>{data.trainer.fullName}</h2>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "0.3rem" }}>{data.trainer.staffCode ?? "No Luxe ID"}</div>
+              </div>
             </div>
             <span className="badge badge-success">{data.trainer.todayStatus ?? "offline"}</span>
           </div>
@@ -311,7 +303,7 @@ export default function TrainerPage() {
             </button>
           </div>
           <button className="btn" style={{ marginTop: "1rem", background: "transparent", border: "1px solid var(--border)" }} onClick={() => void logoutTrainer()}>
-            SWITCH TRAINER
+            LOG OUT TRAINER
           </button>
         </article>
 
@@ -322,12 +314,17 @@ export default function TrainerPage() {
             <ul className="list">
               {data.visibleMembers.map((member) => (
                 <li key={member.id} className="list-item">
-                  <div>
-                    <div style={{ fontWeight: 700 }}>{member.fullName}</div>
-                    <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{member.memberCode} • {member.currentPlan}</div>
+                  <div className="person-row">
+                    <div className="avatar">
+                      {member.photoPath ? <img src={getPhotoUrl(member.photoPath) ?? ""} alt={member.fullName} /> : getInitials(member.fullName)}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{member.fullName}</div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{member.memberCode} - {member.currentPlan}</div>
+                    </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{member.attendanceProgress.attended}/{member.attendanceProgress.target} Ses.</div>
+                    <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{member.attendanceProgress.attended}/{member.attendanceProgress.target} sessions</div>
                     <div style={{ fontSize: "0.7rem", color: member.daysLeft < 7 ? "var(--accent)" : "var(--text-dim)" }}>{member.daysLeft} days left</div>
                   </div>
                 </li>
@@ -342,7 +339,7 @@ export default function TrainerPage() {
               {data.recentEvents.map((event) => (
                 <li key={event.id} className="list-item">
                   <div>
-                    <div style={{ fontWeight: 700 }}>{event.source}</div>
+                    <div style={{ fontWeight: 700 }}>{(event as any).actorName ?? event.source}</div>
                     <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{formatDateTime(event.occurredAt)}</div>
                   </div>
                   <span className="badge badge-success">{event.result}</span>

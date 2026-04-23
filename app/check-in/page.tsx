@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createSupabaseBrowserClient, isSupabaseConfigured } from "@/lib/supabase-client";
 import { KioskCheckInResponse, Member } from "@/lib/types";
+import { getInitials, getPhotoUrl } from "@/lib/utils";
 
 const SESSION_KEY = "luxe-member-device";
 
@@ -251,6 +252,28 @@ export default function CheckInPage() {
           border-top: 1px solid var(--border);
           text-align: left;
         }
+        .profile-row {
+          display: flex;
+          align-items: center;
+          gap: 0.9rem;
+        }
+        .profile-avatar {
+          width: 62px;
+          height: 62px;
+          border-radius: 50%;
+          overflow: hidden;
+          border: 1px solid var(--border);
+          background: rgba(255,255,255,0.05);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+        }
+        .profile-avatar img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
         .loader {
           border: 3px solid rgba(255,255,255,0.1);
           border-top: 3px solid var(--accent);
@@ -291,6 +314,9 @@ export default function CheckInPage() {
       <header className="header">
         <Link href="/" className="logo">LUXE <span>FITNESS</span></Link>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          <Link href="/" style={{ fontSize: "0.8rem", color: "var(--text-dim)", textDecoration: "none", fontWeight: 700 }}>
+            HOME
+          </Link>
           <Link href="/trainer-access" style={{ fontSize: "0.8rem", color: "white", textDecoration: "none", fontWeight: 700 }}>
             TRAINER LOGIN
           </Link>
@@ -387,18 +413,32 @@ export default function CheckInPage() {
 
           {state?.member ? (
             <div className="member-info">
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>ATHLETE</div>
-              <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{state.member.fullName}</div>
-              <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--accent)" }}>
-                PLAN: {state.member.currentPlan}
+              <div className="profile-row">
+                <div className="profile-avatar">
+                  {state.member.photoPath ? <img src={getPhotoUrl(state.member.photoPath) ?? ""} alt={state.member.fullName} /> : getInitials(state.member.fullName)}
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>ATHLETE</div>
+                  <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{state.member.fullName}</div>
+                  <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--accent)" }}>
+                    PLAN: {state.member.currentPlan}
+                  </div>
+                </div>
               </div>
             </div>
           ) : verifiedMember ? (
             <div className="member-info">
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>VERIFIED MEMBER</div>
-              <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{verifiedMember.fullName}</div>
-              <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--accent)" }}>
-                PLAN: {verifiedMember.currentPlan}
+              <div className="profile-row">
+                <div className="profile-avatar">
+                  {verifiedMember.photoPath ? <img src={getPhotoUrl(verifiedMember.photoPath) ?? ""} alt={verifiedMember.fullName} /> : getInitials(verifiedMember.fullName)}
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>VERIFIED MEMBER</div>
+                  <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{verifiedMember.fullName}</div>
+                  <div style={{ fontSize: "0.8rem", marginTop: "0.5rem", color: "var(--accent)" }}>
+                    PLAN: {verifiedMember.currentPlan}
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}

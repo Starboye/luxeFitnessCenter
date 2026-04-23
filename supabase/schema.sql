@@ -5,6 +5,7 @@ create table if not exists profiles (
   full_name text not null,
   email text unique,
   phone text unique,
+  photo_path text,
   created_at timestamptz not null default now()
 );
 

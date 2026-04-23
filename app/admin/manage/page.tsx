@@ -131,7 +131,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
             </div>
             <h1 style={{ margin: 0, fontSize: "clamp(2rem, 4vw, 3.2rem)", lineHeight: 0.95 }}>Manage people, packages, and payments.</h1>
             <p style={{ color: "#9a9a9a", lineHeight: 1.65, maxWidth: 720 }}>
-              This page gives the admin a single place to onboard new members, register trainers, define reusable packages, and log payments for any member.
+              Add members and trainers, load their photos into secure gym records, define training packages, and track payments from one place.
             </p>
           </div>
           <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: "1.6rem", background: "#111" }}>
@@ -159,6 +159,10 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
               <input name="memberCode" placeholder="Luxe ID (LUXE-1005)" required style={inputStyle} />
               <input name="phone" placeholder="Phone" required style={inputStyle} />
               <input name="email" placeholder="Email" type="email" style={inputStyle} />
+              <label style={labelStyle}>
+                Member photo
+                <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" style={inputStyle} />
+              </label>
               <select name="packageId" required defaultValue="" style={inputStyle}>
                 <option value="" disabled>Select gym package</option>
                 {packages.filter((pkg) => pkg.active).map((pkg) => (
@@ -177,6 +181,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
               <input name="dueAmount" type="number" step="0.01" min="0" defaultValue="0" placeholder="Due amount" required style={inputStyle} />
               <button type="submit" style={buttonStyle}>Create Member</button>
             </form>
+            <p style={helpTextStyle}>Upload a clear face photo up to 2MB. Photos are stored in a private bucket and shown during check-in, trainer lookup, and gym records.</p>
             {!packages.filter((pkg) => pkg.active).length ? (
               <div style={{ marginTop: "0.9rem", color: "#fcd34d", fontWeight: 700 }}>
                 Add at least one active package before creating a member.
@@ -191,6 +196,10 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
               <input name="staffCode" placeholder="Trainer Luxe ID (LUXE-TR-001)" required style={inputStyle} />
               <input name="phone" placeholder="Phone" required style={inputStyle} />
               <input name="email" placeholder="Email" type="email" style={inputStyle} />
+              <label style={labelStyle}>
+                Trainer photo
+                <input name="photo" type="file" accept="image/png,image/jpeg,image/webp" style={inputStyle} />
+              </label>
               <input name="specialization" placeholder="Specialization" style={inputStyle} />
               <select name="role" defaultValue="trainer" style={inputStyle}>
                 <option value="trainer">Trainer</option>
@@ -198,6 +207,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
               </select>
               <button type="submit" style={buttonStyle}>Create Trainer</button>
             </form>
+            <p style={helpTextStyle}>Trainer photos appear in the coaches view, the trainer workspace, and staff records.</p>
           </article>
 
           <article style={panelStyle}>
@@ -295,6 +305,21 @@ const inputStyle: CSSProperties = {
   background: "#090909",
   color: "white",
   padding: "0.92rem 1rem"
+};
+
+const labelStyle: CSSProperties = {
+  display: "grid",
+  gap: "0.45rem",
+  color: "#cfcfcf",
+  fontSize: 13,
+  fontWeight: 700
+};
+
+const helpTextStyle: CSSProperties = {
+  marginTop: "0.85rem",
+  color: "#9a9a9a",
+  lineHeight: 1.6,
+  fontSize: 13
 };
 
 const buttonStyle: CSSProperties = {

@@ -53,6 +53,9 @@ import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase
 import { KioskCheckInResponse } from "@/lib/types";
 import { markMemberAttendance, recordTrainerAttendance } from "@/lib/data";
 
+const PHOTO_BUCKET = "profile-photos";
+const MAX_PHOTO_SIZE_BYTES = 2 * 1024 * 1024;
+
 /**
  * SHARED KIOSK ACTION
  * Processes ID entry from the front-desk tablet.
@@ -165,6 +168,57 @@ function formatDbError(error: { message?: string; details?: string | null; hint?
   return [error.message, error.details, error.hint].filter(Boolean).join(" | ");
 }
 
+function sanitizeFileExtension(fileName: string, mimeType: string) {
+  const fromName = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() : "";
+  if (fromName && ["jpg", "jpeg", "png", "webp"].includes(fromName)) {
+    return fromName;
+  }
+
+  if (mimeType === "image/png") {
+    return "png";
+  }
+
+  if (mimeType === "image/webp") {
+    return "webp";
+  }
+
+  return "jpg";
+}
+
+async function uploadProfilePhoto(
+  supabase: ReturnType<typeof createAdminClient>,
+  file: FormDataEntryValue | null,
+  folder: "members" | "trainers",
+  recordId: string
+) {
+  if (!(file instanceof File) || file.size === 0) {
+    return null;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Only image uploads are supported.");
+  }
+
+  if (file.size > MAX_PHOTO_SIZE_BYTES) {
+    throw new Error("Image size must stay under 2MB.");
+  }
+
+  const extension = sanitizeFileExtension(file.name, file.type);
+  const photoPath = `${folder}/${recordId}.${extension}`;
+  const arrayBuffer = await file.arrayBuffer();
+
+  const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(photoPath, arrayBuffer, {
+    contentType: file.type,
+    upsert: true
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return photoPath;
+}
+
 export async function adminPanelLoginAction(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const expected = process.env.ADMIN_PANEL_PASSWORD;
@@ -206,6 +260,7 @@ export async function createMemberAction(formData: FormData) {
   const membershipStatus = String(formData.get("membershipStatus") ?? "active").trim();
   const startDate = String(formData.get("startDate") ?? "").trim();
   const dueAmount = parseMoney(formData.get("dueAmount"));
+  const photoFile = formData.get("photo");
 
   if (!fullName || !memberCode || !phone || !packageId || !startDate) {
     redirectWithError("/admin/manage", "missing-required-fields");
@@ -255,6 +310,19 @@ export async function createMemberAction(formData: FormData) {
 
   if (!profile) {
     redirectWithError("/admin/manage", "database-error", "Profile creation returned no record.");
+  }
+
+  try {
+    const photoPath = await uploadProfilePhoto(supabase, photoFile, "members", profile.id);
+    if (photoPath) {
+      const { error: photoUpdateError } = await supabase.from("profiles").update({ photo_path: photoPath }).eq("id", profile.id);
+      if (photoUpdateError) {
+        throw new Error(photoUpdateError.message);
+      }
+    }
+  } catch (error) {
+    await supabase.from("profiles").delete().eq("id", profile.id);
+    redirectWithError("/admin/manage", "database-error", error instanceof Error ? error.message : "Unable to upload member photo.");
   }
 
   const { data: member, error: memberError } = await supabase
@@ -310,6 +378,7 @@ export async function createTrainerAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim();
   const specialization = String(formData.get("specialization") ?? "").trim();
   const role = String(formData.get("role") ?? "trainer").trim();
+  const photoFile = formData.get("photo");
 
   if (!fullName || !staffCode || !phone || !role) {
     redirectWithError("/admin/manage", "missing-required-fields");
@@ -336,6 +405,19 @@ export async function createTrainerAction(formData: FormData) {
 
   if (!profile) {
     redirectWithError("/admin/manage", "database-error", "Trainer profile creation returned no record.");
+  }
+
+  try {
+    const photoPath = await uploadProfilePhoto(supabase, photoFile, "trainers", profile.id);
+    if (photoPath) {
+      const { error: photoUpdateError } = await supabase.from("profiles").update({ photo_path: photoPath }).eq("id", profile.id);
+      if (photoUpdateError) {
+        throw new Error(photoUpdateError.message);
+      }
+    }
+  } catch (error) {
+    await supabase.from("profiles").delete().eq("id", profile.id);
+    redirectWithError("/admin/manage", "database-error", error instanceof Error ? error.message : "Unable to upload trainer photo.");
   }
 
   const { error: staffError } = await supabase.from("staff").insert({

@@ -8,20 +8,38 @@ const heroVideos = [
 ];
 
 const featureCards = [
-  { title: "Athlete-led Floor", detail: "Specialized zones for lifting and athletic conditioning.", icon: "01" },
-  { title: "Smart Check-In", detail: "Scan the static QR on the floor and start your session instantly.", icon: "02" },
-  { title: "Command Center", detail: "Real-time insights for staff to monitor floor density and dues.", icon: "03" }
+  { title: "Strength Floor", detail: "Dedicated zones for lifting, conditioning, and focused gym sessions.", icon: "01" },
+  { title: "Fast Check-In", detail: "Scan once, verify quickly, and move straight into your workout.", icon: "02" },
+  { title: "Coach Support", detail: "Trainers stay close to the floor to guide form, intensity, and progress.", icon: "03" }
 ];
 
 const programs = [
-  { title: "Personal Training", detail: "Structured strength and form correction.", img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=800" },
-  { title: "Group Conditioning", detail: "High-energy circuit blocks and cardio coaching.", img: "https://images.unsplash.com/photo-1518611012118-696072aa579a?q=80&w=800" },
-  { title: "Recovery Support", detail: "Mobility guidance and athletic recovery flow.", img: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800" }
+  {
+    title: "Strength Progression",
+    detail: "Barbell lifts, machine work, and progressive overload built for real gym results.",
+    quote: "Every rep earns the next level.",
+    content: "Build control, track your numbers, and chase stronger movement patterns every week.",
+    img: "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?q=80&w=800"
+  },
+  {
+    title: "Conditioning Sessions",
+    detail: "Athletic circuits, sled work, rowing, and endurance rounds that raise work capacity.",
+    quote: "Conditioning is where grit becomes visible.",
+    content: "Push pace, recover with purpose, and keep your energy sharp from warm-up to final round.",
+    img: "https://images.unsplash.com/photo-1518611012118-696072aa579a?q=80&w=800"
+  },
+  {
+    title: "Mobility and Recovery",
+    detail: "Joint prep, guided stretching, and recovery-focused movement to keep training consistent.",
+    quote: "Recover well so you can train hard again.",
+    content: "Restore range, stay fresh between sessions, and keep your body ready for the next block.",
+    img: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?q=80&w=800"
+  }
 ];
 
 const trainers = [
   { name: "Sarath Kumar", role: "Floor Manager", detail: "Oversees the gym floor, member flow, and day-to-day training operations." },
-  { name: "Jagan Raj", role: "Luxe Head", detail: "Leads the Luxe Fitness experience, coaching culture, and operational direction." }
+  { name: "Jagan Raj", role: "Luxe Head", detail: "Leads the coaching culture, training standards, and daily energy of the gym." }
 ];
 
 const cssStyles = `
@@ -208,7 +226,27 @@ const cssStyles = `
     .hero { text-align: center; padding-top: 4rem; }
     .nav-links { display: none; }
     .hero-content { width: 100%; max-width: none; }
+    .hero-text {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0 auto;
+    }
     .brand-lockup { justify-content: center; }
+    .hero-p { margin-left: auto; margin-right: auto; }
+    .hero-actions {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.9rem;
+    }
+    .hero-actions .btn {
+      width: min(100%, 280px);
+      margin-right: 0;
+      text-align: center;
+    }
   }
 `;
 
@@ -225,7 +263,8 @@ export default function HomePage() {
           <Link href="#programs">PROGRAMS</Link>
           <Link href="#trainers">TRAINERS</Link>
           <Link href="#contact">CONTACT</Link>
-          <Link href="/admin" style={{ color: "var(--gold)" }}>OPS DASHBOARD</Link>
+          <Link href="/trainer-access">TRAINER LOGIN</Link>
+          <Link href="/admin" style={{ color: "var(--gold)" }}>ADMIN</Link>
           <Link href="/check-in" className="btn btn-primary" style={{ padding: "0.6rem 1.2rem" }}>CHECK-IN</Link>
         </div>
       </header>
@@ -259,15 +298,15 @@ export default function HomePage() {
               </div>
               <div className="badge">
                 <span style={{ width: 8, height: 8, background: "var(--accent)", borderRadius: "50%" }} />
-                LIVE OPS SYSTEM ACTIVE
+                TRAIN HARD. RECOVER WELL.
               </div>
               <h1>EVOLVE <br /> <span className="highlight">STRONGER.</span></h1>
               <p className="hero-p">
-                A premium training floor in Chennai. Static QR check-ins and elite coaching for the modern athlete.
+                A premium training floor in Chennai built for disciplined check-ins, focused lifting, and consistent progress.
               </p>
               <div className="hero-actions">
-                <Link href="/check-in" className="btn btn-primary">SCAN STATIC QR</Link>
-                <Link href="#programs" className="btn btn-outline">EXPLORE FLOOR</Link>
+                <Link href="/check-in" className="btn btn-primary">START CHECK-IN</Link>
+                <Link href="#programs" className="btn btn-outline">EXPLORE TRAINING</Link>
               </div>
             </div>
           </div>
@@ -295,8 +334,9 @@ export default function HomePage() {
                 <img src={p.img} alt={p.title} style={{ width: "100%", height: "250px", objectFit: "cover" }} />
                 <div style={{ padding: "1.5rem" }}>
                   <h3>{p.title}</h3>
-                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: "0.5rem 0 1rem" }}>{p.detail}</p>
-                  <Link href="#" style={{ color: "var(--accent)", textDecoration: "none", fontWeight: 700, fontSize: "0.8rem" }}>VIEW SCHEDULE →</Link>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: "0.5rem 0 0.75rem" }}>{p.detail}</p>
+                  <div style={{ color: "var(--gold)", fontWeight: 800, fontSize: "0.9rem", marginBottom: "0.5rem" }}>{p.quote}</div>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", lineHeight: 1.6, margin: 0 }}>{p.content}</p>
                 </div>
               </div>
             ))}
@@ -313,6 +353,9 @@ export default function HomePage() {
                 <p>{t.detail}</p>
               </div>
             ))}
+          </div>
+          <div style={{ marginTop: "2rem" }}>
+            <Link href="/trainer-access" className="btn btn-primary">TRAINER LOGIN</Link>
           </div>
         </section>
       </main>

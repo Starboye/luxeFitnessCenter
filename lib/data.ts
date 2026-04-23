@@ -741,8 +741,8 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
     { data: eventRows },
     { data: dailyAttendance }
   ] = await Promise.all([
-    supabase.from("members").select("*, profiles(full_name, phone)").order("joined_at", { ascending: false }),
-    supabase.from("staff").select("*, profiles(full_name, email)").order("role").order("staff_code"),
+    supabase.from("members").select("*, profiles(full_name, phone, photo_path)").order("joined_at", { ascending: false }),
+    supabase.from("staff").select("*, profiles(full_name, email, photo_path)").order("role").order("staff_code"),
     supabase.from("memberships").select("*").order("end_date", { ascending: false }),
     supabase.from("payments").select("*").order("paid_on", { ascending: false }),
     supabase.from("alert_queue").select("*").order("created_at", { ascending: false }),
@@ -785,6 +785,7 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
       memberCode: m.member_code,
       fullName: m.profiles?.full_name || "Unknown Member",
       phone: m.profiles?.phone || undefined,
+      photoPath: m.profiles?.photo_path || undefined,
       active: m.active,
       joinedAt: m.joined_at,
       currentPlan: latest?.planName || "No active plan",
@@ -801,21 +802,32 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
     if (row.actor_type === "member") {
       const match = membersList.find(m => m.id === row.actor_id);
       actorName = match?.fullName || "Member";
+      return {
+        id: row.id,
+        actorId: row.actor_id,
+        actorType: row.actor_type,
+        actorName,
+        photoPath: match?.photoPath,
+        source: row.source,
+        result: getAttendanceStatusLabel(row.result),
+        occurredAt: row.occurred_at,
+        note: row.note
+      };
     } else {
       const match = (staffRows || []).find((s: any) => s.id === row.actor_id);
       actorName = match?.profiles?.full_name || "Staff";
+      return {
+        id: row.id,
+        actorId: row.actor_id,
+        actorType: row.actor_type,
+        actorName,
+        photoPath: match?.profiles?.photo_path || undefined,
+        source: row.source,
+        result: getAttendanceStatusLabel(row.result),
+        occurredAt: row.occurred_at,
+        note: row.note
+      };
     }
-
-    return {
-      id: row.id,
-      actorId: row.actor_id,
-      actorType: row.actor_type,
-      actorName, 
-      source: row.source,
-      result: getAttendanceStatusLabel(row.result),
-      occurredAt: row.occurred_at,
-      note: row.note
-    };
   });
 
   const trainers: Staff[] = (staffRows || [])
@@ -825,6 +837,7 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
       staffCode: s.staff_code,
       fullName: s.profiles?.full_name || "Trainer",
       email: s.profiles?.email || undefined,
+      photoPath: s.profiles?.photo_path || undefined,
       role: s.role,
       active: s.active,
       specialization: s.specialization || undefined,
@@ -903,7 +916,7 @@ export async function markMemberAttendance(
       id,
       member_code,
       active,
-      profiles (full_name),
+      profiles (full_name, photo_path),
       memberships (plan_name, end_date, due_amount, status)
     `)
     .eq("member_code", memberCode.toUpperCase())
@@ -924,6 +937,7 @@ export async function markMemberAttendance(
       member: {
         id: member.id,
         fullName: (member.profiles as any)?.full_name || "Member",
+        photoPath: (member.profiles as any)?.photo_path || undefined,
         // Map other fields as needed for the UI
       } as any
     };
@@ -956,6 +970,7 @@ export async function markMemberAttendance(
       id: member.id,
       memberCode: member.member_code,
       fullName: (member.profiles as any)?.full_name || "Member",
+      photoPath: (member.profiles as any)?.photo_path || undefined,
       currentPlan: latestMembership?.plan_name || "Standard",
       daysLeft: daysLeft,
       dueAmount: latestMembership?.due_amount || 0,
@@ -1000,7 +1015,7 @@ export async function findMemberByCode(memberCode: string) {
       member_code,
       active,
       joined_at,
-      profiles (full_name, phone),
+      profiles (full_name, phone, photo_path),
       memberships (plan_name, end_date, due_amount)
     `)
     .eq("member_code", memberCode.toUpperCase())
@@ -1021,6 +1036,7 @@ export async function findMemberByCode(memberCode: string) {
     memberCode: member.member_code,
     fullName: (member.profiles as any)?.full_name || "Member",
     phone: (member.profiles as any)?.phone || undefined,
+    photoPath: (member.profiles as any)?.photo_path || undefined,
     active: member.active,
     joinedAt: member.joined_at,
     currentPlan: latestMembership?.plan_name || "Standard",
