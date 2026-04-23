@@ -581,6 +581,10 @@ function toNumber(value: any): number {
   return 0;
 }
 
+function normalizeMemberCode(value: string) {
+  return value.trim().replace(/\s+/g, "").toUpperCase();
+}
+
 function getLatestMembershipForMember(memberships: Membership[], memberId: string) {
   return memberships
     .filter((membership) => membership.memberId === memberId)
@@ -1014,47 +1018,21 @@ export async function markMemberAttendance(
   source: "kiosk" | "qr"
 ): Promise<KioskCheckInResponse> {
   const supabase = createAdminClient();
+  const member = await findMemberByCode(memberCode);
 
-  // 1. Fetch member with their profile and latest membership status
-  const { data: member, error: memberError } = await supabase
-    .from("members")
-    .select(`
-      id,
-      profile_id,
-      member_code,
-      active,
-      personal_trainer_id,
-      profiles (full_name, photo_path),
-      memberships (plan_name, end_date, due_amount, status)
-    `)
-    .eq("member_code", memberCode.toUpperCase())
-    .single();
-
-  if (memberError || !member) {
+  if (!member) {
     return {
       ok: false,
-      message: "Member not found. Please check the ID and try again.",
+      message: "Member ID not found. Check the Luxe ID format and try again.",
     };
   }
 
   // 2. Check if member is active
   if (!member.active) {
-    const { data: assignedTrainer } = member.personal_trainer_id
-      ? await supabase.from("staff").select("id, profiles(full_name)").eq("id", member.personal_trainer_id).maybeSingle()
-      : { data: null };
     return {
       ok: false,
       message: "Membership is inactive. Please see the front desk.",
-      member: {
-        id: member.id,
-        profileId: undefined,
-        fullName: (member.profiles as any)?.full_name || "Member",
-        photoPath: (member.profiles as any)?.photo_path || undefined,
-        personalTrainerId: member.personal_trainer_id || undefined,
-        personalTrainerName: (assignedTrainer as any)?.profiles?.full_name || undefined,
-        hasPersonalTrainer: Boolean(assignedTrainer),
-        // Map other fields as needed for the UI
-      } as any
+      member
     };
   }
 
@@ -1072,36 +1050,17 @@ export async function markMemberAttendance(
   if (eventError) throw eventError;
 
   // 4. Prepare UI-friendly data
-  const latestMembership = (member.memberships as any[])?.[0];
-  const { data: assignedTrainer } = member.personal_trainer_id
-    ? await supabase.from("staff").select("id, profiles(full_name)").eq("id", member.personal_trainer_id).maybeSingle()
-    : { data: null };
   const attendanceStats = await getMemberAttendanceStats(member.id);
-  const daysLeft = latestMembership 
-    ? Math.max(0, Math.ceil((new Date(latestMembership.end_date).getTime() - Date.now()) / 86400000)) 
-    : 0;
 
   return {
     ok: true,
     message: "Check-in successful. Have a great workout!",
     member: {
-      id: member.id,
-      profileId: undefined,
-      memberCode: member.member_code,
-      fullName: (member.profiles as any)?.full_name || "Member",
-      photoPath: (member.profiles as any)?.photo_path || undefined,
-      currentPlan: latestMembership?.plan_name || "Standard",
-      personalTrainerId: member.personal_trainer_id || undefined,
-      personalTrainerName: (assignedTrainer as any)?.profiles?.full_name || undefined,
-      hasPersonalTrainer: Boolean(assignedTrainer),
-      daysLeft: daysLeft,
-      dueAmount: latestMembership?.due_amount || 0,
+      ...member,
       streak: attendanceStats.streak,
-      active: true,
-      joinedAt: new Date().toISOString(),
       attendanceProgress: { attended: attendanceStats.attended, target: ATTENDANCE_TARGET },
       lastCheckIn: attendanceStats.lastCheckIn
-    } as any
+    }
   };
 }
 
@@ -1126,11 +1085,15 @@ export async function getTrainerDashboardData(trainerCode?: string): Promise<Tra
 
 export async function findMemberByCode(memberCode: string) {
   if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return mockMembers.find((member) => member.memberCode.toLowerCase() === memberCode.toLowerCase()) ?? null;
+    const normalizedMemberCode = normalizeMemberCode(memberCode);
+    return mockMembers.find((member) => normalizeMemberCode(member.memberCode) === normalizedMemberCode) ?? null;
   }
 
   const supabase = createAdminClient();
-  const { data: member } = await supabase
+  const normalizedMemberCode = normalizeMemberCode(memberCode);
+  let member: any = null;
+
+  const primaryQuery = await supabase
     .from("members")
     .select(`
       id,
@@ -1142,8 +1105,28 @@ export async function findMemberByCode(memberCode: string) {
       profiles (full_name, phone, email, photo_path),
       memberships (plan_name, end_date, due_amount)
     `)
-    .eq("member_code", memberCode.toUpperCase())
-    .single();
+    .ilike("member_code", normalizedMemberCode)
+    .maybeSingle();
+
+  if (primaryQuery.error && primaryQuery.error.message.includes("personal_trainer_id")) {
+    const fallbackQuery = await supabase
+      .from("members")
+      .select(`
+        id,
+        profile_id,
+        member_code,
+        active,
+        joined_at,
+        profiles (full_name, phone, email, photo_path),
+        memberships (plan_name, end_date, due_amount)
+      `)
+      .ilike("member_code", normalizedMemberCode)
+      .maybeSingle();
+
+    member = fallbackQuery.data;
+  } else {
+    member = primaryQuery.data;
+  }
 
   if (!member) {
     return null;

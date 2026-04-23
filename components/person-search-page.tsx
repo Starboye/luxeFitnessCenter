@@ -18,6 +18,36 @@ function buildCalendarCells(calendar: PersonProfileData["attendanceCalendar"]) {
   return days;
 }
 
+function buildCalendarMonths(calendar: PersonProfileData["attendanceCalendar"]) {
+  const countByDate = new Map(calendar.map((entry) => [entry.date, entry.count]));
+  const months: Array<{ key: string; label: string; year: string; leadingBlanks: number; days: Array<{ date: string; count: number; dayOfMonth: number }> }> = [];
+  const today = new Date();
+
+  for (let offset = 11; offset >= 0; offset -= 1) {
+    const current = new Date(today.getFullYear(), today.getMonth() - offset, 1);
+    const year = String(current.getFullYear());
+    const monthIndex = current.getMonth();
+    const key = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+    const label = current.toLocaleString("en-IN", { month: "long" });
+    const daysInMonth = new Date(current.getFullYear(), monthIndex + 1, 0).getDate();
+    const leadingBlanks = (current.getDay() + 6) % 7;
+    const days = [];
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(current.getFullYear(), monthIndex, day).toISOString().slice(0, 10);
+      days.push({
+        date,
+        count: countByDate.get(date) ?? 0,
+        dayOfMonth: day
+      });
+    }
+
+    months.push({ key, label, year, leadingBlanks, days });
+  }
+
+  return months;
+}
+
 function getHeatColor(count: number) {
   if (count >= 3) return "#ff3e3e";
   if (count === 2) return "#ff7a59";
@@ -41,6 +71,7 @@ export function PersonSearchPage({
   const isAdmin = viewer === "admin";
   const basePath = isAdmin ? "/admin/search" : "/trainer/search";
   const calendarCells = profile ? buildCalendarCells(profile.attendanceCalendar) : [];
+  const calendarMonths = profile ? buildCalendarMonths(profile.attendanceCalendar) : [];
 
   return (
     <div style={{ minHeight: "100vh", background: "#050505", color: "white", fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -145,10 +176,58 @@ export function PersonSearchPage({
             </article>
 
             <article style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: "1.5rem" }}>
-              <div style={{ fontSize: 12, color: "#ff5a5a", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: "0.9rem" }}>Attendance Calendar</div>
-              <div style={{ display: "grid", gridAutoFlow: "column", gridTemplateRows: "repeat(7, 12px)", gap: 4, overflowX: "auto", paddingBottom: 8 }}>
-                {calendarCells.map((cell) => (
-                  <div key={cell.date} title={`${cell.date} - ${cell.count} check-in(s)`} style={{ width: 12, height: 12, borderRadius: 3, background: getHeatColor(cell.count) }} />
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#ff5a5a", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase" }}>Attendance Calendar</div>
+                  <div style={{ color: "#9a9a9a", fontSize: 13, marginTop: 6 }}>Last 12 months with weekday layout and month labels.</div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#9a9a9a", fontSize: 12 }}>
+                  <span>Less</span>
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: getHeatColor(0) }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: getHeatColor(1) }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: getHeatColor(2) }} />
+                  <div style={{ width: 12, height: 12, borderRadius: 3, background: getHeatColor(3) }} />
+                  <span>More</span>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
+                {calendarMonths.map((month) => (
+                  <div key={month.key} style={{ background: "#171717", borderRadius: 18, padding: "1rem", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.85rem", alignItems: "center" }}>
+                      <strong style={{ fontSize: 15 }}>{month.label}</strong>
+                      <span style={{ color: "#9a9a9a", fontSize: 12 }}>{month.year}</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8, color: "#777", fontSize: 11, textAlign: "center" }}>
+                      {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                        <div key={day}>{day}</div>
+                      ))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+                      {Array.from({ length: month.leadingBlanks }).map((_, index) => (
+                        <div key={`${month.key}-blank-${index}`} />
+                      ))}
+                      {month.days.map((day) => (
+                        <div
+                          key={day.date}
+                          title={`${day.date} - ${day.count} check-in(s)`}
+                          style={{
+                            minHeight: 34,
+                            borderRadius: 8,
+                            background: getHeatColor(day.count),
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: day.count > 0 ? "#fff" : "#8f8f8f",
+                            border: "1px solid rgba(255,255,255,0.04)"
+                          }}
+                        >
+                          {day.dayOfMonth}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </article>
