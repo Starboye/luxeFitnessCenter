@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+
 export default function TrainerAccessPage() {
+  const router = useRouter();
   const [trainerCode, setTrainerCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -18,20 +21,27 @@ export default function TrainerAccessPage() {
     setLoading(true);
     setMessage(null);
 
-    const response = await fetch("/api/trainer-auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trainerCode })
-    });
-    const payload = await response.json();
+    try {
+      const response = await fetch("/api/trainer-auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainerCode })
+      });
+      
+      const payload = await response.json();
 
-    if (!response.ok || !payload?.ok) {
-      setMessage(payload?.message ?? "Unable to verify trainer Luxe ID.");
+      if (!response.ok || !payload?.ok) {
+        setMessage(payload?.message ?? "Unable to verify trainer Luxe ID.");
+        setLoading(false);
+        return;
+      }
+
+      // Use router.push instead of window.location for a faster, SPA transition
+      router.push("/trainer");
+    } catch (err) {
+      setMessage("A connection error occurred.");
       setLoading(false);
-      return;
     }
-
-    window.location.href = "/trainer";
   };
 
   return (
@@ -41,8 +51,7 @@ export default function TrainerAccessPage() {
         display: "grid",
         placeItems: "center",
         padding: "1.5rem",
-        background:
-          "radial-gradient(circle at top, rgba(255,62,62,0.14), transparent 28%), linear-gradient(180deg, #020202 0%, #090909 100%)",
+        background: "radial-gradient(circle at top, rgba(255,62,62,0.14), transparent 28%), linear-gradient(180deg, #020202 0%, #090909 100%)",
         color: "white",
         fontFamily: "Inter, system-ui, sans-serif"
       }}
@@ -62,7 +71,7 @@ export default function TrainerAccessPage() {
         </div>
         <h1 style={{ margin: "0.7rem 0 0.8rem", fontSize: "2.2rem", lineHeight: 1 }}>Log In With Luxe ID</h1>
         <p style={{ color: "#9a9a9a", lineHeight: 1.6 }}>
-          Trainers use their own Luxe ID here before opening the coach workspace and attendance controls.
+          Trainers must verify their Luxe ID to access the workspace.
         </p>
 
         <form onSubmit={handleSubmit} style={{ marginTop: "1.25rem", display: "grid", gap: "0.9rem" }}>
@@ -98,7 +107,7 @@ export default function TrainerAccessPage() {
           </button>
         </form>
 
-        {message ? (
+        {message && (
           <div
             style={{
               marginTop: "1rem",
@@ -112,7 +121,7 @@ export default function TrainerAccessPage() {
           >
             {message}
           </div>
-        ) : null}
+        )}
 
         <Link href="/" style={{ display: "inline-block", marginTop: "1.25rem", color: "#9a9a9a", textDecoration: "none", fontWeight: 700 }}>
           Return Home

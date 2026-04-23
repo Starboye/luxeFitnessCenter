@@ -6,102 +6,86 @@ import { useRouter } from "next/navigation";
 import { TrainerDashboardData } from "@/lib/types";
 import { formatDateTime, getInitials, getPhotoUrl } from "@/lib/utils";
 
-const heroVideos = [
-  "/media/carrosal_1.mp4",
-  "/media/carrosal_2.mp4",
-  "/media/carrosal_3.mp4"
-];
+const heroVideos = ["/media/carrosal_1.mp4", "/media/carrosal_2.mp4", "/media/carrosal_3.mp4"];
 
 const initialData: TrainerDashboardData = {
-  trainer: {
-    id: "loading",
-    fullName: "Loading trainer",
-    role: "trainer",
-    active: true
-  },
+  trainer: { id: "loading", fullName: "Loading...", role: "trainer", active: true },
   visibleMembers: [],
   recentEvents: []
 };
 
 export default function TrainerPage() {
   const router = useRouter();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [data, setData] = useState<TrainerDashboardData>(initialData);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // Key fix: handle loading state
+
   const visibleMembers = Array.isArray(data.visibleMembers) ? data.visibleMembers : [];
   const recentEvents = Array.isArray(data.recentEvents) ? data.recentEvents : [];
 
   useEffect(() => {
-    const load = async () => {
+    const load = async (isInitial = false) => {
       try {
         const response = await fetch("/api/trainer-dashboard", { cache: "no-store" });
+        
         if (response.status === 401) {
-          setIsLoggedIn(false);
-          setLoadError(null);
           router.replace("/trainer-access");
           return;
         }
-        const text = await response.text();
-        const payload = text ? JSON.parse(text) : null;
 
         if (!response.ok) {
-          throw new Error(payload?.error ?? "Unable to load trainer dashboard.");
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData?.error ?? "Unable to load dashboard.");
         }
 
-        if (!payload) {
-          throw new Error("Trainer dashboard returned an empty response.");
-        }
-
+        const payload = await response.json();
         setData(payload as TrainerDashboardData);
-        setIsLoggedIn(true);
         setLoadError(null);
       } catch (error) {
-        setLoadError(error instanceof Error ? error.message : "Unable to load trainer dashboard.");
+        setLoadError(error instanceof Error ? error.message : "Connection error.");
+      } finally {
+        if (isInitial) setIsLoading(false); // Stop loading only after first check
       }
     };
 
-    void load();
-    const intervalId = window.setInterval(() => void load(), 15000);
+    void load(true);
+    const intervalId = window.setInterval(() => void load(false), 15000);
     return () => window.clearInterval(intervalId);
   }, [router]);
 
   const logoutTrainer = async () => {
     await fetch("/api/trainer-auth", { method: "DELETE" });
-    setIsLoggedIn(false);
     router.replace("/trainer-access");
   };
 
   const handleAttendance = async (action: "login" | "logout") => {
     const formData = new FormData();
     formData.set("action", action);
-    const attendanceResponse = await fetch("/api/trainer-dashboard", {
+    const response = await fetch("/api/trainer-dashboard", {
       method: "POST",
       body: formData
     });
 
-    if (!attendanceResponse.ok) {
-      const text = await attendanceResponse.text();
-      try {
-        const payload = text ? JSON.parse(text) : null;
-        setLoadError(payload?.error ?? "Unable to update trainer attendance.");
-      } catch {
-        setLoadError("Unable to update trainer attendance.");
-      }
+    if (!response.ok) {
+      setLoadError("Unable to update attendance.");
       return;
     }
-
-    const response = await fetch("/api/trainer-dashboard", { cache: "no-store" });
-    const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
-
-    if (!response.ok || !payload) {
-      setLoadError("Unable to refresh trainer dashboard.");
-      return;
-    }
-
-    setData(payload as TrainerDashboardData);
-    setLoadError(null);
+    
+    // Refresh data after action
+    const refresh = await fetch("/api/trainer-dashboard", { cache: "no-store" });
+    const payload = await refresh.json();
+    setData(payload);
   };
+
+  // If we are still checking auth, show a blank dark screen or a simple loader
+  // This prevents the dashboard from flashing before the redirect happens
+  if (isLoading) {
+    return (
+      <div style={{ background: "#050505", minHeight: "100vh", display: "grid", placeItems: "center", color: "white" }}>
+        <div style={{ letterSpacing: "0.2em", fontSize: "0.8rem", color: "#ff3e3e", fontWeight: 900 }}>AUTHENTICATING...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="trainer-root">
@@ -128,9 +112,7 @@ export default function TrainerPage() {
           content: "";
           position: absolute;
           inset: 0;
-          background:
-            linear-gradient(90deg, rgba(5, 5, 5, 0.88) 0%, rgba(5, 5, 5, 0.72) 45%, rgba(5, 5, 5, 0.84) 100%),
-            linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.58));
+          background: linear-gradient(90deg, rgba(5, 5, 5, 0.88) 0%, rgba(5, 5, 5, 0.72) 45%, rgba(5, 5, 5, 0.84) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.58));
           z-index: 0;
           pointer-events: none;
         }
@@ -162,13 +144,11 @@ export default function TrainerPage() {
         .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
         .list { list-style: none; padding: 0; }
         .list-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem 0; border-bottom: 1px solid var(--border); gap: 1rem; }
-        .list-item:last-child { border: none; }
         .person-row { display: flex; align-items: center; gap: 0.85rem; }
         .avatar { width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: rgba(255,255,255,0.05); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-weight: 800; }
         .avatar img { width: 100%; height: 100%; object-fit: cover; }
         .badge { font-size: 0.65rem; font-weight: 800; padding: 4px 8px; border-radius: 4px; text-transform: uppercase; }
         .badge-success { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-        .input-field { width: 100%; background: #000; border: 1px solid var(--border); padding: 0.8rem; border-radius: 6px; color: white; margin-bottom: 1rem; }
         .btn { width: 100%; padding: 0.8rem; background: var(--accent); color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; }
         .split-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
         @keyframes backgroundCarousel {
@@ -187,11 +167,7 @@ export default function TrainerPage() {
             key={video}
             className="background-video"
             style={{ animationDelay: `${index * 6}s` }}
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="auto"
+            autoPlay muted loop playsInline preload="auto"
           >
             <source src={video} type="video/mp4" />
           </video>
@@ -212,12 +188,13 @@ export default function TrainerPage() {
       <main className="main-content">
         <div className="eyebrow">Floor Management</div>
         <h1>Coach Workspace</h1>
-        {loadError ? (
-          <div className="panel" style={{ borderColor: "var(--accent)", color: "var(--text)" }}>
-            <strong style={{ display: "block", marginBottom: "0.5rem" }}>Dashboard unavailable</strong>
+        
+        {loadError && (
+          <div className="panel" style={{ borderColor: "var(--accent)" }}>
+            <strong style={{ display: "block" }}>System Alert</strong>
             <span style={{ color: "var(--text-dim)" }}>{loadError}</span>
           </div>
-        ) : null}
+        )}
 
         <section className="metric-grid">
           <div className="metric-card">
@@ -228,12 +205,10 @@ export default function TrainerPage() {
           <div className="metric-card">
             <div className="metric-label">Members on Floor</div>
             <div className="metric-value">{visibleMembers.length}</div>
-            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Active members</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Recent Events</div>
             <div className="metric-value">{recentEvents.length}</div>
-            <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Live activity feed</div>
           </div>
         </section>
 
@@ -244,30 +219,22 @@ export default function TrainerPage() {
                 {data.trainer.photoPath ? <img src={getPhotoUrl(data.trainer.photoPath) ?? ""} alt={data.trainer.fullName} /> : getInitials(data.trainer.fullName)}
               </div>
               <div>
-                <div className="eyebrow">Self Attendance</div>
+                <div className="eyebrow">Active Session</div>
                 <h2 style={{ margin: 0 }}>{data.trainer.fullName}</h2>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "0.3rem" }}>{data.trainer.staffCode ?? "No Luxe ID"}</div>
               </div>
             </div>
-            <span className="badge badge-success">{data.trainer.todayStatus ?? "offline"}</span>
           </div>
           <div style={{ display: "flex", gap: "1rem" }}>
-            <button className="btn" style={{ background: "var(--surface)", border: "1px solid var(--border)", flex: 1 }} onClick={() => void handleAttendance("login")}>
-              CLOCK IN
-            </button>
-            <button className="btn" style={{ background: "transparent", border: "1px solid var(--accent)", color: "var(--accent)", flex: 1 }} onClick={() => void handleAttendance("logout")}>
-              CLOCK OUT
-            </button>
+            <button className="btn" style={{ background: "var(--surface)", border: "1px solid var(--border)", flex: 1 }} onClick={() => void handleAttendance("login")}>CLOCK IN</button>
+            <button className="btn" style={{ background: "transparent", border: "1px solid var(--accent)", color: "var(--accent)", flex: 1 }} onClick={() => void handleAttendance("logout")}>CLOCK OUT</button>
           </div>
-          <button className="btn" style={{ marginTop: "1rem", background: "transparent", border: "1px solid var(--border)" }} onClick={() => void logoutTrainer()}>
-            LOG OUT TRAINER
-          </button>
+          <button className="btn" style={{ marginTop: "1rem", background: "transparent", border: "1px solid var(--border)" }} onClick={() => void logoutTrainer()}>LOG OUT TRAINER</button>
         </article>
 
         <div className="split-grid">
           <article className="panel">
-            <div className="eyebrow">Member Lookup</div>
-            <h2 style={{ marginBottom: "1rem" }}>Visible Athletes</h2>
+            <div className="eyebrow">Visibility</div>
+            <h2 style={{ marginBottom: "1rem" }}>Active Members</h2>
             <ul className="list">
               {visibleMembers.map((member) => (
                 <li key={member.id} className="list-item">
@@ -277,12 +244,8 @@ export default function TrainerPage() {
                     </div>
                     <div>
                       <div style={{ fontWeight: 700 }}>{member.fullName}</div>
-                      <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{member.memberCode} - {member.currentPlan}</div>
+                      <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>{member.memberCode}</div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.85rem" }}>{member.attendanceProgress.attended}/{member.attendanceProgress.target} sessions</div>
-                    <div style={{ fontSize: "0.7rem", color: member.daysLeft < 7 ? "var(--accent)" : "var(--text-dim)" }}>{member.daysLeft} days left</div>
                   </div>
                 </li>
               ))}
@@ -290,8 +253,8 @@ export default function TrainerPage() {
           </article>
 
           <article className="panel">
-            <div className="eyebrow">Activity Feed</div>
-            <h2 style={{ marginBottom: "1rem" }}>Latest Floor Events</h2>
+            <div className="eyebrow">Real-time</div>
+            <h2 style={{ marginBottom: "1rem" }}>Floor Activity</h2>
             <ul className="list">
               {recentEvents.map((event) => (
                 <li key={event.id} className="list-item">
