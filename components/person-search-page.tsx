@@ -1,4 +1,8 @@
+"use client";
+
+import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { updateMemberAction } from "@/app/actions";
 import { PersonProfileData, PersonSearchResult } from "@/lib/types";
 import { formatCurrency, formatDate, getInitials, getPhotoUrl } from "@/lib/utils";
@@ -68,10 +72,24 @@ export function PersonSearchPage({
   profile: PersonProfileData | null;
   status?: string;
 }) {
+  const router = useRouter();
   const isAdmin = viewer === "admin";
   const basePath = isAdmin ? "/admin/search" : "/trainer/search";
+  const [searchValue, setSearchValue] = useState(query);
   const calendarCells = profile ? buildCalendarCells(profile.attendanceCalendar) : [];
   const calendarMonths = profile ? buildCalendarMonths(profile.attendanceCalendar) : [];
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    const trimmed = searchValue.trim();
+
+    if (trimmed) {
+      params.set("q", trimmed);
+    }
+
+    router.push(params.toString() ? `${basePath}?${params.toString()}` : basePath);
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#050505", color: "white", fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -93,10 +111,11 @@ export function PersonSearchPage({
           <p style={{ color: "#9a9a9a", lineHeight: 1.65, maxWidth: 760 }}>
             Search by name, phone number, or Luxe ID. Open the full profile to review attendance, streaks, plan validity, assigned PT, and {isAdmin ? "collections" : "training history"}.
           </p>
-          <form action={basePath} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "0.85rem", marginTop: "1rem" }}>
+          <form onSubmit={handleSearchSubmit} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "0.85rem", marginTop: "1rem" }}>
             <input
               name="q"
-              defaultValue={query}
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
               placeholder="Search by name, phone, or Luxe ID"
               style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "#090909", color: "white", padding: "0.92rem 1rem" }}
             />
