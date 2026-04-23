@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TrainerDashboardData } from "@/lib/types";
 import { formatDateTime, getInitials, getPhotoUrl } from "@/lib/utils";
 
@@ -23,10 +24,12 @@ const initialData: TrainerDashboardData = {
 };
 
 export default function TrainerPage() {
+  const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [trainerId, setTrainerId] = useState("");
   const [data, setData] = useState<TrainerDashboardData>(initialData);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const visibleMembers = Array.isArray(data.visibleMembers) ? data.visibleMembers : [];
+  const recentEvents = Array.isArray(data.recentEvents) ? data.recentEvents : [];
 
   useEffect(() => {
     const load = async () => {
@@ -35,6 +38,7 @@ export default function TrainerPage() {
         if (response.status === 401) {
           setIsLoggedIn(false);
           setLoadError(null);
+          router.replace("/trainer-access");
           return;
         }
         const text = await response.text();
@@ -59,36 +63,12 @@ export default function TrainerPage() {
     void load();
     const intervalId = window.setInterval(() => void load(), 15000);
     return () => window.clearInterval(intervalId);
-  }, []);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const response = await fetch("/api/trainer-auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trainerCode: trainerId })
-    });
-
-    const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
-
-    if (!response.ok || !payload?.ok) {
-      setLoadError(payload?.message ?? "Unable to verify trainer Luxe ID.");
-      setIsLoggedIn(false);
-      return;
-    }
-
-    const dashboardResponse = await fetch("/api/trainer-dashboard", { cache: "no-store" });
-    const dashboardPayload = (await dashboardResponse.json()) as TrainerDashboardData;
-    setData(dashboardPayload);
-    setIsLoggedIn(true);
-    setLoadError(null);
-  };
+  }, [router]);
 
   const logoutTrainer = async () => {
     await fetch("/api/trainer-auth", { method: "DELETE" });
     setIsLoggedIn(false);
-    setTrainerId("");
+    router.replace("/trainer-access");
   };
 
   const handleAttendance = async (action: "login" | "logout") => {
@@ -174,8 +154,6 @@ export default function TrainerPage() {
         .main-content { flex: 1; padding: 2rem 3rem; overflow-y: auto; position: relative; z-index: 1; }
         .eyebrow { font-size: 0.7rem; color: var(--accent); font-weight: 900; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 0.5rem; }
         h1 { font-size: 1.8rem; font-weight: 800; margin-bottom: 2rem; }
-        .login-overlay { position: fixed; inset: 0; background: rgba(5, 5, 5, 0.86); z-index: 100; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
-        .login-card { background: var(--surface); padding: 3rem; border-radius: 16px; border: 1px solid var(--border); width: 100%; max-width: 400px; text-align: center; }
         .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
         .metric-card { background: var(--surface); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); }
         .metric-label { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.5rem; }
@@ -220,28 +198,6 @@ export default function TrainerPage() {
         ))}
       </div>
 
-      {!isLoggedIn && (
-        <div className="login-overlay">
-          <div className="login-card">
-            <div className="eyebrow">Trainer Secure Access</div>
-            <h2 style={{ marginBottom: "1.5rem" }}>Verify Identity</h2>
-            <form onSubmit={handleLogin}>
-              <input
-                type="text"
-                className="input-field"
-                placeholder="Trainer Luxe ID"
-                value={trainerId}
-                onChange={(e) => setTrainerId(e.target.value.toUpperCase())}
-              />
-              <button className="btn" type="submit">
-                LOG IN TO WORKSPACE
-              </button>
-            </form>
-            <Link href="/" style={{ display: "block", marginTop: "1.5rem", color: "var(--text-dim)", fontSize: "0.8rem" }}>Return to Home</Link>
-          </div>
-        </div>
-      )}
-
       <aside className="sidebar">
         <Link href="/" className="sidebar-brand">LUXE <span>COACH</span></Link>
         <nav>
@@ -270,12 +226,12 @@ export default function TrainerPage() {
           </div>
           <div className="metric-card">
             <div className="metric-label">Members on Floor</div>
-            <div className="metric-value">{data.visibleMembers.length}</div>
+            <div className="metric-value">{visibleMembers.length}</div>
             <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Active members</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Recent Events</div>
-            <div className="metric-value">{data.recentEvents.length}</div>
+            <div className="metric-value">{recentEvents.length}</div>
             <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Live activity feed</div>
           </div>
         </section>
@@ -312,7 +268,7 @@ export default function TrainerPage() {
             <div className="eyebrow">Member Lookup</div>
             <h2 style={{ marginBottom: "1rem" }}>Visible Athletes</h2>
             <ul className="list">
-              {data.visibleMembers.map((member) => (
+              {visibleMembers.map((member) => (
                 <li key={member.id} className="list-item">
                   <div className="person-row">
                     <div className="avatar">
@@ -336,7 +292,7 @@ export default function TrainerPage() {
             <div className="eyebrow">Activity Feed</div>
             <h2 style={{ marginBottom: "1rem" }}>Latest Floor Events</h2>
             <ul className="list">
-              {data.recentEvents.map((event) => (
+              {recentEvents.map((event) => (
                 <li key={event.id} className="list-item">
                   <div>
                     <div style={{ fontWeight: 700 }}>{(event as any).actorName ?? event.source}</div>
