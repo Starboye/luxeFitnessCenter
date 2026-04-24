@@ -9,6 +9,16 @@ function createAdminClient() {
   );
 }
 
+function shouldUseSecureCookie(request: Request) {
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+
+  if (forwardedProto) {
+    return forwardedProto === "https";
+  }
+
+  return new URL(request.url).protocol === "https:";
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { trainerCode?: string };
@@ -43,7 +53,7 @@ export async function POST(request: Request) {
     response.cookies.set("luxe_trainer_session", trainerCode, {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: shouldUseSecureCookie(request),
       path: "/",
       maxAge: 60 * 60 * 8
     });
@@ -54,12 +64,12 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const response = NextResponse.json({ ok: true });
   response.cookies.set("luxe_trainer_session", "", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureCookie(request),
     path: "/",
     maxAge: 0
   });
