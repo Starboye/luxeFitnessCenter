@@ -52,6 +52,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient, isSupabaseConfigured } from "@/lib/supabase-server";
 import { KioskCheckInResponse } from "@/lib/types";
 import { markMemberAttendance, recordTrainerAttendance } from "@/lib/data";
+import { logAuditEvent } from "@/lib/audit";
 
 const ADMIN_SESSION_VALUE = "active";
 const PHOTO_BUCKET = "profile-photos";
@@ -66,14 +67,42 @@ export async function kioskCheckInAction(_: any, formData: FormData): Promise<Ki
   const memberCode = String(formData.get("memberCode") ?? "").trim().toUpperCase();
 
   if (!memberCode) {
+    await logAuditEvent({
+      actorRole: "system",
+      actionCode: "member_checkin",
+      status: "blocked",
+      targetType: "member",
+      context: "kiosk",
+      detail: "Member code missing."
+    });
     return { ok: false, message: "Enter a valid member ID to continue." };
   }
 
   try {
     const result = await markMemberAttendance(memberCode, "kiosk");
+    await logAuditEvent({
+      actorRole: "member",
+      actorCode: memberCode,
+      actionCode: "member_checkin",
+      status: result.ok ? "success" : "blocked",
+      targetType: "member",
+      targetCode: result.member?.memberCode ?? memberCode,
+      context: "kiosk",
+      detail: result.message
+    });
     revalidatePath("/admin"); // Refresh admin dashboard stats
     return result;
   } catch (error) {
+    await logAuditEvent({
+      actorRole: "member",
+      actorCode: memberCode,
+      actionCode: "member_checkin",
+      status: "error",
+      targetType: "member",
+      targetCode: memberCode,
+      context: "kiosk",
+      detail: error instanceof Error ? error.message : "Unknown kiosk check-in failure."
+    });
     return { ok: false, message: "System offline. Please see reception." };
   }
 }
@@ -86,12 +115,44 @@ export async function quickQrCheckInAction(_: any, formData: FormData): Promise<
   const memberCode = String(formData.get("memberCode") ?? "").trim().toUpperCase();
 
   if (!memberCode) {
+    await logAuditEvent({
+      actorRole: "system",
+      actionCode: "member_checkin",
+      status: "blocked",
+      targetType: "member",
+      context: "qr",
+      detail: "Member code missing."
+    });
     return { ok: false, message: "Member ID required for verification." };
   }
 
-  const result = await markMemberAttendance(memberCode, "qr");
-  revalidatePath("/admin");
-  return result;
+  try {
+    const result = await markMemberAttendance(memberCode, "qr");
+    await logAuditEvent({
+      actorRole: "member",
+      actorCode: memberCode,
+      actionCode: "member_checkin",
+      status: result.ok ? "success" : "blocked",
+      targetType: "member",
+      targetCode: result.member?.memberCode ?? memberCode,
+      context: "qr",
+      detail: result.message
+    });
+    revalidatePath("/admin");
+    return result;
+  } catch (error) {
+    await logAuditEvent({
+      actorRole: "member",
+      actorCode: memberCode,
+      actionCode: "member_checkin",
+      status: "error",
+      targetType: "member",
+      targetCode: memberCode,
+      context: "qr",
+      detail: error instanceof Error ? error.message : "Unknown QR check-in failure."
+    });
+    return { ok: false, message: "System offline. Please see reception." };
+  }
 }
 
 /**
@@ -103,9 +164,24 @@ export async function trainerAttendanceAction(formData: FormData) {
   
   try {
     await recordTrainerAttendance(action);
+    await logAuditEvent({
+      actorRole: "trainer",
+      actionCode: action === "login" ? "trainer_checkin" : "trainer_checkout",
+      status: "success",
+      targetType: "trainer",
+      context: "trainer_dashboard"
+    });
     revalidatePath("/trainer");
     revalidatePath("/admin");
   } catch (e) {
+    await logAuditEvent({
+      actorRole: "trainer",
+      actionCode: action === "login" ? "trainer_checkin" : "trainer_checkout",
+      status: "error",
+      targetType: "trainer",
+      context: "trainer_dashboard",
+      detail: e instanceof Error ? e.message : "Attendance sync failed."
+    });
     console.error("Attendance sync failed");
   }
 }
@@ -272,10 +348,30 @@ export async function adminPanelLoginAction(formData: FormData) {
   const expected = process.env.ADMIN_PANEL_PASSWORD;
 
   if (!expected) {
+    await logAuditEvent({
+      actorRole: "admin",
+      actorCode: "ADMIN",
+      actionCode: "admin_login",
+      status: "error",
+      targetType: "admin",
+      targetCode: "ADMIN",
+      context: "admin_access",
+      detail: "Admin panel password is not configured."
+    });
     redirect("/admin-access?error=missing-password-config");
   }
 
   if (password !== expected) {
+    await logAuditEvent({
+      actorRole: "admin",
+      actorCode: "ADMIN",
+      actionCode: "admin_login",
+      status: "blocked",
+      targetType: "admin",
+      targetCode: "ADMIN",
+      context: "admin_access",
+      detail: "Invalid admin password."
+    });
     redirect("/admin-access?error=invalid-password");
   }
 
@@ -285,6 +381,16 @@ export async function adminPanelLoginAction(formData: FormData) {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 60 * 60 * 8
+  });
+
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "admin_login",
+    status: "success",
+    targetType: "admin",
+    targetCode: "ADMIN",
+    context: "admin_access"
   });
 
   redirect("/admin");
@@ -297,6 +403,15 @@ export async function adminPanelLogoutAction() {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 0
+  });
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "admin_logout",
+    status: "success",
+    targetType: "admin",
+    targetCode: "ADMIN",
+    context: "admin_access"
   });
   redirect("/admin-access");
 }
@@ -427,6 +542,15 @@ export async function createMemberAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/admin/manage");
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "member_create",
+    status: "success",
+    targetType: "member",
+    targetCode: memberCode,
+    context: "admin_manage"
+  });
   redirect("/admin/manage?status=member-created");
 }
 
@@ -499,6 +623,15 @@ export async function updateMemberAction(formData: FormData) {
   revalidatePath("/admin/search");
   revalidatePath("/trainer");
   revalidatePath("/check-in");
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "member_update",
+    status: "success",
+    targetType: "member",
+    targetCode: String(formData.get("memberCode") ?? "").trim().toUpperCase() || memberId,
+    context: "admin_search"
+  });
   redirect("/admin/search?status=member-updated");
 }
 
@@ -577,6 +710,15 @@ export async function createTrainerAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/admin/manage");
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "trainer_create",
+    status: "success",
+    targetType: "trainer",
+    targetCode: staffCode,
+    context: "admin_manage"
+  });
   redirect("/admin/manage?status=trainer-created");
 }
 
@@ -613,6 +755,15 @@ export async function createMembershipPackageAction(formData: FormData) {
   }
 
   revalidatePath("/admin/manage");
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "package_create",
+    status: "success",
+    targetType: "package",
+    targetCode: name,
+    context: "admin_manage"
+  });
   redirect("/admin/manage?status=package-created");
 }
 
@@ -635,6 +786,7 @@ export async function recordMemberPaymentAction(formData: FormData) {
   const dueReduction = dueReductionInput === null || dueReductionInput === 0 ? amount : dueReductionInput;
 
   const supabase = createAdminClient();
+  const { data: memberRecord } = await supabase.from("members").select("member_code").eq("id", memberId).maybeSingle();
   const { data: memberships, error: membershipError } = await supabase
     .from("memberships")
     .select("id, due_amount, status")
@@ -674,5 +826,16 @@ export async function recordMemberPaymentAction(formData: FormData) {
 
   revalidatePath("/admin");
   revalidatePath("/admin/manage");
+  await logAuditEvent({
+    actorRole: "admin",
+    actorCode: "ADMIN",
+    actionCode: "payment_update",
+    status: "success",
+    targetType: "member",
+    targetCode: (memberRecord as any)?.member_code ?? memberId,
+    amount,
+    context: "admin_manage",
+    detail: `Payment recorded via ${method}.`
+  });
   redirect("/admin/manage?status=payment-recorded");
 }

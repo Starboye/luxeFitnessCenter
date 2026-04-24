@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logAuditEvent } from "@/lib/audit";
 
 function createAdminClient() {
   return createClient(
@@ -25,6 +26,14 @@ export async function POST(request: Request) {
     const trainerCode = String(body.trainerCode ?? "").trim().toUpperCase();
 
     if (!trainerCode) {
+      await logAuditEvent({
+        actorRole: "trainer",
+        actionCode: "trainer_login",
+        status: "blocked",
+        targetType: "trainer",
+        context: "trainer_access",
+        detail: "Trainer code missing."
+      });
       return NextResponse.json({ ok: false, message: "Trainer Luxe ID is required." }, { status: 400 });
     }
 
@@ -38,6 +47,16 @@ export async function POST(request: Request) {
       .single();
 
     if (error || !trainer) {
+      await logAuditEvent({
+        actorRole: "trainer",
+        actorCode: trainerCode,
+        actionCode: "trainer_login",
+        status: "blocked",
+        targetType: "trainer",
+        targetCode: trainerCode,
+        context: "trainer_access",
+        detail: "Trainer Luxe ID not found."
+      });
       return NextResponse.json({ ok: false, message: "Trainer Luxe ID not found." }, { status: 404 });
     }
 
@@ -58,8 +77,26 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 8
     });
 
+    await logAuditEvent({
+      actorRole: "trainer",
+      actorCode: trainerCode,
+      actionCode: "trainer_login",
+      status: "success",
+      targetType: "trainer",
+      targetCode: trainer.staff_code,
+      context: "trainer_access"
+    });
+
     return response;
-  } catch {
+  } catch (error) {
+    await logAuditEvent({
+      actorRole: "trainer",
+      actionCode: "trainer_login",
+      status: "error",
+      targetType: "trainer",
+      context: "trainer_access",
+      detail: error instanceof Error ? error.message : "Unable to verify trainer."
+    });
     return NextResponse.json({ ok: false, message: "Unable to verify trainer right now." }, { status: 500 });
   }
 }
@@ -72,6 +109,13 @@ export async function DELETE(request: Request) {
     secure: shouldUseSecureCookie(request),
     path: "/",
     maxAge: 0
+  });
+  await logAuditEvent({
+    actorRole: "trainer",
+    actionCode: "trainer_logout",
+    status: "success",
+    targetType: "trainer",
+    context: "trainer_access"
   });
   return response;
 }

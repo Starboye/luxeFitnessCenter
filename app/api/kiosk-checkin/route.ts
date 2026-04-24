@@ -15,6 +15,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { markMemberAttendance } from "@/lib/data";
+import { logAuditEvent } from "@/lib/audit";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,14 @@ export async function POST(request: NextRequest) {
 
     // 2. Validate input
     if (!memberCode) {
+      await logAuditEvent({
+        actorRole: "member",
+        actionCode: "member_checkin",
+        status: "blocked",
+        targetType: "member",
+        context: "kiosk_api",
+        detail: "Member code missing."
+      });
       return NextResponse.json(
         { ok: false, message: "Member ID is required." },
         { status: 400 }
@@ -32,11 +41,29 @@ export async function POST(request: NextRequest) {
 
     // 3. Execute the attendance logic
     const result = await markMemberAttendance(memberCode, "kiosk");
+    await logAuditEvent({
+      actorRole: "member",
+      actorCode: String(memberCode).trim().toUpperCase(),
+      actionCode: "member_checkin",
+      status: result.ok ? "success" : "blocked",
+      targetType: "member",
+      targetCode: result.member?.memberCode ?? String(memberCode).trim().toUpperCase(),
+      context: "kiosk_api",
+      detail: result.message
+    });
 
     // 4. Return the result as JSON
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("KIOSK_API_ERROR:", error);
+    await logAuditEvent({
+      actorRole: "member",
+      actionCode: "member_checkin",
+      status: "error",
+      targetType: "member",
+      context: "kiosk_api",
+      detail: error?.message ?? "Kiosk API error."
+    });
     
     // Always return JSON even on failure to prevent frontend "Unexpected end of JSON" errors
     return NextResponse.json(
