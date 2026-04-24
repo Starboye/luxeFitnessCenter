@@ -2,10 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-
 export default function TrainerAccessPage() {
-  const router = useRouter();
   const [trainerCode, setTrainerCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -36,8 +33,8 @@ export default function TrainerAccessPage() {
         return;
       }
 
-      // Use router.push instead of window.location for a faster, SPA transition
-      router.push("/trainer");
+      // A full navigation ensures the freshly-set auth cookie is available on the next request.
+      window.location.assign("/trainer");
     } catch (err) {
       setMessage("A connection error occurred.");
       setLoading(false);

@@ -25,10 +25,19 @@ export default function TrainerPage() {
 
   useEffect(() => {
     const load = async (isInitial = false) => {
+      let keepLoading = false;
+
       try {
         const response = await fetch("/api/trainer-dashboard", { cache: "no-store" });
         
         if (response.status === 401) {
+          if (isInitial) {
+            keepLoading = true;
+            window.setTimeout(() => {
+              void load(false);
+            }, 150);
+            return;
+          }
           router.replace("/trainer-access");
           return;
         }
@@ -44,7 +53,7 @@ export default function TrainerPage() {
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : "Connection error.");
       } finally {
-        if (isInitial) setIsLoading(false); // Stop loading only after first check
+        if (isInitial && !keepLoading) setIsLoading(false); // Stop loading only after the first successful auth check
       }
     };
 
