@@ -293,29 +293,8 @@ export default function AdminPage() {
           --border: rgba(255, 255, 255, 0.08); --success: #10b981;
           --danger: #ef4444; --warning: #f59e0b;
         }
-        .admin-root { background: var(--admin-bg); color: var(--text); min-height: 100vh; font-family: 'Inter', sans-serif; display: flex; }
-        .sidebar { width: 260px; border-right: 1px solid var(--border); padding: 2rem 1.5rem; height: 100vh; position: sticky; top: 0; }
-        .sidebar-brand {
-          width: 84px;
-          height: 84px;
-          margin-bottom: 3rem;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 18px;
-          overflow: hidden;
-          text-decoration: none;
-          border: 1px solid var(--border);
-          background: rgba(255, 255, 255, 0.04);
-        }
-        .sidebar-brand img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-        .sidebar-link { display: block; padding: 0.8rem 1rem; color: var(--text-dim); text-decoration: none; font-weight: 600; font-size: 0.9rem; border-radius: 6px; margin-bottom: 0.5rem; }
-        .sidebar-link.active { background: var(--panel); color: var(--accent); border-left: 3px solid var(--accent); }
-        .content { flex: 1; padding: 2rem 3rem; }
+        .admin-root { background: var(--admin-bg); color: var(--text); min-height: 100vh; font-family: 'Inter', sans-serif; }
+        .content { padding: 2rem 3rem; }
         
         /* Search Bar  */
         .search-container { margin-bottom: 2rem; position: relative; }
@@ -323,12 +302,14 @@ export default function AdminPage() {
         .global-search:focus { border-color: var(--accent); box-shadow: 0 0 15px rgba(255,62,62,0.1); }
         
         /* Dashboard Layout */
-        .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+        .admin-shell { max-width: 1320px; margin: 0 auto; padding: 2rem; }
+        .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 2rem; }
         .metric-card { background: var(--panel); border: 1px solid var(--border); padding: 1.5rem; border-radius: 12px; }
         .dashboard-split { display: grid; grid-template-columns: 1.5fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+        .dashboard-split > * { min-width: 0; }
         
         /* Panels */
-        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; position: relative; }
+        .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; position: relative; min-width: 0; overflow: hidden; }
         .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
         
         /* Attendance Table Style */
@@ -346,23 +327,15 @@ export default function AdminPage() {
         .bg-warning { background: rgba(245,158,11,0.1); color: var(--warning); }
         
         input[type="date"] { background: #000; color: white; border: 1px solid var(--border); padding: 0.5rem; border-radius: 6px; outline: none; }
+        .table-search { background: #000; border: 1px solid var(--border); padding: 0.5rem 1rem; border-radius: 8px; color: white; }
+        .table-wrap { overflow-x: auto; }
+        @media (max-width: 1200px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 980px) { .admin-shell { padding: 1.25rem; } .content { padding: 0; } .dashboard-split { grid-template-columns: 1fr; } .panel-header { flex-direction: column; align-items: stretch; } }
+        @media (max-width: 720px) { .metric-grid { grid-template-columns: 1fr; } .att-table { min-width: 680px; } .global-result-grid { grid-template-columns: 1fr !important; } .global-result-header { flex-direction: column; align-items: flex-start !important; } .table-search { width: 100%; } }
       `}} />
 
-      <aside className="sidebar">
-        <Link href="/" className="sidebar-brand">
-          <img src="/media/Luxe_Fitness_Logo.jpg" alt="Luxe Fitness logo" />
-        </Link>
-        <nav>
-          <Link href="/admin" className="sidebar-link active">DASHBOARD</Link>
-          <Link href="/admin/search" className="sidebar-link">SEARCH</Link>
-          <Link href="/admin/manage" className="sidebar-link">MANAGE RECORDS</Link>
-          <Link href="/kiosk" className="sidebar-link">OPEN KIOSK</Link>
-          <Link href="/trainer" className="sidebar-link">STAFF PORTAL</Link>
-          <Link href="/" className="sidebar-link">HOME</Link>
-        </nav>
-      </aside>
-
       <main className="content">
+        <div className="admin-shell">
         {/* GLOBAL SEARCH */}
         <div className="search-container">
           <input 
@@ -374,14 +347,14 @@ export default function AdminPage() {
           />
           {searchResult && (
             <div style={{ position: 'absolute', top: '110%', left: 0, right: 0, background: '#111', border: '2px solid var(--accent)', borderRadius: '12px', padding: '1.5rem', zIndex: 100, boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="global-result-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
                 <div>
                   <h2 style={{ margin: 0 }}>{searchResult.fullName}</h2>
                   <p style={{ color: 'var(--accent)', fontWeight: 800 }}>{searchResult.memberCode}</p>
                 </div>
                 <button onClick={() => setGlobalSearch("")} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}>✕</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1rem' }}>
+              <div className="global-result-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginTop: '1rem' }}>
                 <div className="metric-card" style={{ background: '#000' }}>
                   <small style={{ color: '#888' }}>PLAN</small>
                   <p style={{ margin: '5px 0 0', fontWeight: 800 }}>{searchResult.currentPlan}</p>
@@ -431,6 +404,7 @@ export default function AdminPage() {
               <h2 style={{ margin: 0 }}>Staff on Record</h2>
             </div>
           </div>
+          <div className="table-wrap">
           <table className="att-table">
             <thead>
               <tr>
@@ -462,6 +436,7 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </section>
 
         <div className="dashboard-split">
@@ -478,6 +453,7 @@ export default function AdminPage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
               />
             </div>
+            <div className="table-wrap">
             <table className="att-table">
               <thead>
                 <tr>
@@ -518,6 +494,7 @@ export default function AdminPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </article>
 
           {/* ALERTS (SWAPPED TO SECONDARY) */}
@@ -545,19 +522,22 @@ export default function AdminPage() {
               <small style={{ color: 'var(--accent)', fontWeight: 800 }}>DATABASE</small>
               <h2 style={{ margin: 0 }}>Membership Directory</h2>
             </div>
-            <input 
+            <input
+              className="table-search"
               type="text" 
               placeholder="Filter table..." 
-              style={{ background: '#000', border: '1px solid var(--border)', padding: '0.5rem 1rem', borderRadius: '8px', color: 'white' }}
               value={tableSearch}
               onChange={(e) => setTableSearch(e.target.value)}
             />
           </div>
+          <div className="table-wrap">
           <table className="att-table">
             <thead>
               <tr>
                 <th>Member</th>
                 <th>Plan</th>
+                <th>Received</th>
+                <th>This Month</th>
                 <th>Days Left</th>
                 <th>Payment Status</th>
               </tr>
@@ -578,6 +558,12 @@ export default function AdminPage() {
                   </td>
                   <td>{member.currentPlan}</td>
                   <td>
+                    <div style={{ fontWeight: 800 }}>{formatCurrency(member.currentPlanReceived ?? 0)}</div>
+                  </td>
+                  <td>
+                    <div style={{ fontWeight: 800, color: 'var(--gold)' }}>{formatCurrency(member.paidThisMonth ?? 0)}</div>
+                  </td>
+                  <td>
                     <div style={{ color: member.daysLeft < 7 ? 'var(--danger)' : 'white', fontWeight: 700 }}>
                       {member.daysLeft} Days
                     </div>
@@ -593,7 +579,9 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </section>
+        </div>
       </main>
     </div>
   );

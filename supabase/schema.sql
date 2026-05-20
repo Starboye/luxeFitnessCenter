@@ -105,3 +105,137 @@ create table if not exists ui_activity_logs (
 create index if not exists ui_activity_logs_occurred_at_idx on ui_activity_logs (occurred_at desc);
 create index if not exists ui_activity_logs_action_code_idx on ui_activity_logs (action_code);
 create index if not exists ui_activity_logs_target_code_idx on ui_activity_logs (target_code);
+
+create table if not exists id_counters (
+  counter_key text primary key,
+  current_value integer not null check (current_value >= 0),
+  prefix text not null,
+  padding integer not null default 3,
+  updated_at timestamptz not null default now()
+);
+
+insert into id_counters (counter_key, current_value, prefix, padding)
+values
+  ('member_code', 1000, 'LUXE-', 4),
+  ('trainer_code', 0, 'LUXE-TR-', 3)
+on conflict (counter_key) do nothing;
+
+create or replace function ensure_member_code_counter()
+returns void
+language plpgsql
+as $$
+declare
+  max_existing integer;
+begin
+  insert into id_counters (counter_key, current_value, prefix, padding)
+  values ('member_code', 1000, 'LUXE-', 4)
+  on conflict (counter_key) do nothing;
+
+  select coalesce(max((regexp_match(member_code, '^LUXE-(\d+)$'))[1]::integer), 1000)
+  into max_existing
+  from members;
+
+  update id_counters
+  set current_value = greatest(current_value, max_existing),
+      updated_at = now()
+  where counter_key = 'member_code';
+end;
+$$;
+
+create or replace function ensure_trainer_code_counter()
+returns void
+language plpgsql
+as $$
+declare
+  max_existing integer;
+begin
+  insert into id_counters (counter_key, current_value, prefix, padding)
+  values ('trainer_code', 0, 'LUXE-TR-', 3)
+  on conflict (counter_key) do nothing;
+
+  select coalesce(max((regexp_match(staff_code, '^LUXE-TR-(\d+)$'))[1]::integer), 0)
+  into max_existing
+  from staff;
+
+  update id_counters
+  set current_value = greatest(current_value, max_existing),
+      updated_at = now()
+  where counter_key = 'trainer_code';
+end;
+$$;
+
+create or replace function peek_member_code()
+returns text
+language plpgsql
+as $$
+declare
+  counter_row id_counters%rowtype;
+begin
+  perform ensure_member_code_counter();
+
+  select *
+  into counter_row
+  from id_counters
+  where counter_key = 'member_code';
+
+  return counter_row.prefix || lpad((counter_row.current_value + 1)::text, counter_row.padding, '0');
+end;
+$$;
+
+create or replace function reserve_member_code()
+returns text
+language plpgsql
+as $$
+declare
+  counter_row id_counters%rowtype;
+begin
+  perform ensure_member_code_counter();
+
+  update id_counters
+  set current_value = current_value + 1,
+      updated_at = now()
+  where counter_key = 'member_code'
+  returning *
+  into counter_row;
+
+  return counter_row.prefix || lpad(counter_row.current_value::text, counter_row.padding, '0');
+end;
+$$;
+
+create or replace function peek_trainer_code()
+returns text
+language plpgsql
+as $$
+declare
+  counter_row id_counters%rowtype;
+begin
+  perform ensure_trainer_code_counter();
+
+  select *
+  into counter_row
+  from id_counters
+  where counter_key = 'trainer_code';
+
+  return counter_row.prefix || lpad((counter_row.current_value + 1)::text, counter_row.padding, '0');
+end;
+$$;
+
+create or replace function reserve_trainer_code()
+returns text
+language plpgsql
+as $$
+declare
+  counter_row id_counters%rowtype;
+begin
+  perform ensure_trainer_code_counter();
+
+  update id_counters
+  set current_value = current_value + 1,
+      updated_at = now()
+  where counter_key = 'trainer_code'
+  returning *
+  into counter_row;
+
+  return counter_row.prefix || lpad(counter_row.current_value::text, counter_row.padding, '0');
+end;
+$$;

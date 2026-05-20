@@ -25,6 +25,8 @@ export interface Member extends Profile {
   hasPersonalTrainer?: boolean;
   daysLeft: number;
   dueAmount: number;
+  currentPlanReceived?: number;
+  paidThisMonth?: number;
   streak: number;
   attendanceProgress: {
     attended: number;
@@ -151,6 +153,9 @@ export interface PersonProfileData {
   streakTrend: TrendPoint[];
   financialTrend?: TrendPoint[];
   totalPaid?: number;
+  currentPlanReceived?: number;
+  paidThisMonth?: number;
+  currentPlanTotalFee?: number;
   totalDue?: number;
   recentPayments?: Payment[];
 }

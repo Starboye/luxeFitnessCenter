@@ -858,6 +858,13 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
 
   // 3. Transform Members (Handling the nested profile)
   const memberAttendanceStats = buildAttendanceStatsMap((memberSuccessEvents || []) as Array<{ actor_id: string; occurred_at: string }>);
+  const now = new Date();
+  const paymentsByMember = payments.reduce((map, payment) => {
+    const bucket = map.get(payment.memberId) ?? [];
+    bucket.push(payment);
+    map.set(payment.memberId, bucket);
+    return map;
+  }, new Map<string, Payment[]>());
   const trainerNameMap = new Map(
     (staffRows || [])
       .filter((staff: any) => staff.role === "trainer")
@@ -867,8 +874,16 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
   const membersList: Member[] = (memberRows || []).map((m: any) => {
     const currentMembership = getCurrentMembershipForMember(memberships, m.id);
     const attendanceStats = memberAttendanceStats.get(m.id);
+    const memberPayments = paymentsByMember.get(m.id) ?? [];
     const daysLeft = currentMembership ? Math.max(0, Math.ceil((new Date(`${currentMembership.endDate}T23:59:59Z`).getTime() - Date.now()) / 86400000)) : 0;
     const assignedTrainer = trainerNameMap.get(m.personal_trainer_id);
+    const currentPlanReceived = currentMembership ? Math.max(currentMembership.totalFee - currentMembership.dueAmount, 0) : 0;
+    const paidThisMonth = memberPayments
+      .filter((payment) => {
+        const paidOn = new Date(payment.paidOn);
+        return paidOn.getMonth() === now.getMonth() && paidOn.getFullYear() === now.getFullYear();
+      })
+      .reduce((sum, payment) => sum + payment.amount, 0);
     
     return {
       id: m.id,
@@ -886,6 +901,8 @@ export async function getAdminDashboardData(targetDate?: string): Promise<AdminD
       hasPersonalTrainer: Boolean(assignedTrainer),
       daysLeft,
       dueAmount: currentMembership?.dueAmount || 0,
+      currentPlanReceived,
+      paidThisMonth,
       streak: attendanceStats?.streak || 0,
       attendanceProgress: {
         attended: attendanceStats?.attended || 0,
@@ -1229,6 +1246,13 @@ export async function getPersonProfile(id: string, type: "member" | "trainer"): 
       .eq("member_id", id)
       .order("paid_on", { ascending: false });
 
+    const { data: membershipRows } = await supabase
+      .from("memberships")
+      .select("id, total_fee, due_amount, start_date, end_date, status")
+      .eq("member_id", id)
+      .order("start_date", { ascending: false })
+      .limit(1);
+
     const statsMap = buildAttendanceStatsMap(
       ((attendanceEvents || []) as Array<{ occurred_at: string }>).map((event) => ({ actor_id: id, occurred_at: event.occurred_at }))
     );
@@ -1242,6 +1266,25 @@ export async function getPersonProfile(id: string, type: "member" | "trainer"): 
       notes: row.notes ?? undefined,
       receivedBy: row.received_by || "system"
     })) as Payment[];
+    const currentMembership = (membershipRows || [])[0] as
+      | {
+          total_fee?: number | string | null;
+          due_amount?: number | string | null;
+          start_date?: string | null;
+          end_date?: string | null;
+          status?: string | null;
+        }
+      | undefined;
+    const currentPlanTotalFee = toNumber(currentMembership?.total_fee ?? 0);
+    const currentPlanDue = toNumber(currentMembership?.due_amount ?? member.dueAmount ?? 0);
+    const currentPlanReceived = Math.max(currentPlanTotalFee - currentPlanDue, 0);
+    const now = new Date();
+    const paidThisMonth = memberPayments
+      .filter((payment) => {
+        const paidOn = new Date(payment.paidOn);
+        return paidOn.getMonth() === now.getMonth() && paidOn.getFullYear() === now.getFullYear();
+      })
+      .reduce((sum, payment) => sum + payment.amount, 0);
 
     return {
       result: {
@@ -1266,6 +1309,9 @@ export async function getPersonProfile(id: string, type: "member" | "trainer"): 
       streakTrend: attendanceStats?.streakTrend ?? [],
       financialTrend: buildFinancialTrend(memberPayments),
       totalPaid: memberPayments.reduce((sum, payment) => sum + payment.amount, 0),
+      currentPlanReceived,
+      paidThisMonth,
+      currentPlanTotalFee,
       totalDue: member.dueAmount,
       recentPayments: memberPayments.slice(0, 8)
     };
