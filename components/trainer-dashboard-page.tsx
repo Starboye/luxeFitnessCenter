@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TrainerDashboardData } from "@/lib/types";
 import { formatDateTime, getInitials, getPhotoUrl } from "@/lib/utils";
@@ -90,7 +89,6 @@ export function TrainerDashboardPage() {
           color: var(--text);
           min-height: 100vh;
           font-family: 'Inter', system-ui, sans-serif;
-          display: flex;
           position: relative;
           overflow: hidden;
         }
@@ -104,22 +102,7 @@ export function TrainerDashboardPage() {
         }
         .background-carousel { position: absolute; inset: 0; z-index: 0; }
         .background-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; animation: backgroundCarousel 18s infinite; }
-        .sidebar {
-          width: 240px;
-          border-right: 1px solid var(--border);
-          padding: 2rem 1.5rem;
-          display: flex;
-          flex-direction: column;
-          position: relative;
-          z-index: 1;
-          background: rgba(5, 5, 5, 0.46);
-          backdrop-filter: blur(8px);
-        }
-        .sidebar-brand { font-weight: 900; color: white; text-decoration: none; margin-bottom: 2.5rem; }
-        .sidebar-brand span { color: var(--accent); }
-        .nav-link { padding: 0.8rem 1rem; color: var(--text-dim); text-decoration: none; font-size: 0.85rem; font-weight: 600; border-radius: 6px; margin-bottom: 0.5rem; }
-        .nav-link.active { background: var(--surface); color: white; border-left: 3px solid var(--accent); }
-        .main-content { flex: 1; padding: 2rem 3rem; overflow-y: auto; position: relative; z-index: 1; }
+        .main-content { padding: 2rem 3rem; overflow-y: auto; position: relative; z-index: 1; }
         .eyebrow { font-size: 0.7rem; color: var(--accent); font-weight: 900; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 0.5rem; }
         h1 { font-size: 1.8rem; font-weight: 800; margin-bottom: 2rem; }
         .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
@@ -144,7 +127,7 @@ export function TrainerDashboardPage() {
           33% { opacity: 0; }
           100% { opacity: 0; }
         }
-        @media (max-width: 900px) { .split-grid, .metric-grid { grid-template-columns: 1fr; } .sidebar { display: none; } }
+        @media (max-width: 900px) { .split-grid, .metric-grid { grid-template-columns: 1fr; } }
       `}} />
 
       <div className="background-carousel" aria-hidden="true">
@@ -159,18 +142,6 @@ export function TrainerDashboardPage() {
           </video>
         ))}
       </div>
-
-      <aside className="sidebar">
-        <Link href="/" className="sidebar-brand">LUXE <span>COACH</span></Link>
-        <nav>
-          <Link href="/trainer" className="nav-link active">DASHBOARD</Link>
-          <Link href="/trainer/search" className="nav-link">SEARCH</Link>
-          <Link href="/trainer/manage" className="nav-link">ADD MEMBER</Link>
-          <Link href="/check-in" className="nav-link">MEMBER CHECK-IN</Link>
-          <Link href="/kiosk" className="nav-link">SHARED KIOSK</Link>
-          <Link href="/" className="nav-link">HOME</Link>
-        </nav>
-      </aside>
 
       <main className="main-content">
         <div className="eyebrow">Floor Management</div>

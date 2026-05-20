@@ -1186,12 +1186,18 @@ export async function searchPeople(query: string): Promise<PersonSearchResult[]>
     return [];
   }
 
+  const normalizedDigits = query.replace(/\D/g, "");
+  const isTrainerCodeQuery = /^luxe-tr-\d+$/i.test(query.trim());
+  const isMemberCodeQuery = /^luxe-\d+$/i.test(query.trim());
+
   const dashboard = await getAdminDashboardData();
   const memberResults = dashboard.members
     .filter((member) =>
-      member.fullName.toLowerCase().includes(value) ||
-      member.memberCode.toLowerCase().includes(value) ||
-      member.phone?.replace(/\D/g, "").includes(query.replace(/\D/g, ""))
+      (isMemberCodeQuery
+        ? member.memberCode.toLowerCase() === value
+        : member.fullName.toLowerCase().includes(value) ||
+          member.memberCode.toLowerCase().includes(value) ||
+          Boolean(normalizedDigits && member.phone?.replace(/\D/g, "").includes(normalizedDigits)))
     )
     .map((member) => ({
       id: member.id,
@@ -1205,9 +1211,12 @@ export async function searchPeople(query: string): Promise<PersonSearchResult[]>
 
   const trainerResults = dashboard.trainers
     .filter((trainer) =>
-      trainer.fullName.toLowerCase().includes(value) ||
-      trainer.staffCode?.toLowerCase().includes(value) ||
-      trainer.phone?.replace(/\D/g, "").includes(query.replace(/\D/g, ""))
+      (isTrainerCodeQuery
+        ? trainer.staffCode?.toLowerCase() === value
+        : !isMemberCodeQuery &&
+          (trainer.fullName.toLowerCase().includes(value) ||
+            trainer.staffCode?.toLowerCase().includes(value) ||
+            Boolean(normalizedDigits && trainer.phone?.replace(/\D/g, "").includes(normalizedDigits))))
     )
     .map((trainer) => ({
       id: trainer.id,
