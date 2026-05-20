@@ -228,7 +228,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
                 <input name="fullName" placeholder="Full name" required style={inputStyle} />
               </FieldLabel>
               <FieldLabel label="Luxe ID">
-                <input name="memberCode" defaultValue={nextMemberCode} placeholder="Luxe ID" required readOnly style={readOnlyInputStyle} />
+                <input name="memberCode" defaultValue={nextMemberCode} placeholder="Luxe ID" required style={inputStyle} />
               </FieldLabel>
               <FieldLabel label="Phone">
                 <input name="phone" placeholder="Phone" required style={inputStyle} />
@@ -279,7 +279,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
                 <input name="fullName" placeholder="Full name" required style={inputStyle} />
               </FieldLabel>
               <FieldLabel label="Luxe ID">
-                <input name="staffCode" defaultValue={nextTrainerCode} placeholder="Trainer Luxe ID" required readOnly style={readOnlyInputStyle} />
+                <input name="staffCode" defaultValue={nextTrainerCode} placeholder="Trainer Luxe ID" required style={inputStyle} />
               </FieldLabel>
               <FieldLabel label="Phone">
                 <input name="phone" placeholder="Phone" required style={inputStyle} />
