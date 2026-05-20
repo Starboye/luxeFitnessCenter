@@ -482,7 +482,7 @@ export async function createMemberAction(formData: FormData) {
   }
 
   const supabase = createAdminClient();
-  const memberCode = await reserveGeneratedCode(supabase, "reserve_member_code", submittedMemberCode || "LUXE-1001");
+  const memberCode = submittedMemberCode || await reserveGeneratedCode(supabase, "reserve_member_code", "LUXE-1001");
   let selectedPackage: { id: string; name: string; duration_days: number; price: number | string } | null = null;
 
   if (packageId) {
@@ -777,7 +777,7 @@ export async function createTrainerAction(formData: FormData) {
   }
 
   const supabase = createAdminClient();
-  const staffCode = await reserveGeneratedCode(supabase, "reserve_trainer_code", submittedStaffCode || "LUXE-TR-001");
+  const staffCode = submittedStaffCode || await reserveGeneratedCode(supabase, "reserve_trainer_code", "LUXE-TR-001");
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .insert({
