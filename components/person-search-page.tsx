@@ -93,7 +93,28 @@ export function PersonSearchPage({
 
   return (
     <div style={{ minHeight: "100vh", background: "#050505", color: "white", fontFamily: "Inter, system-ui, sans-serif" }}>
-      <div style={{ maxWidth: 1320, margin: "0 auto", padding: "2rem" }}>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .person-search-shell { max-width: 1320px; margin: 0 auto; padding: 2rem; }
+            .person-search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.85rem; margin-top: 1rem; }
+            .person-profile-metrics { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 0.85rem; flex: 1; min-width: 320px; }
+            .person-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+            .person-detail-grid > * { min-width: 0; overflow: hidden; }
+            .person-update-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
+            @media (max-width: 980px) {
+              .person-search-shell { padding: 1.25rem; }
+              .person-profile-metrics,
+              .person-detail-grid,
+              .person-update-form { grid-template-columns: 1fr; min-width: 0; }
+            }
+            @media (max-width: 720px) {
+              .person-search-form { grid-template-columns: 1fr; }
+            }
+          `
+        }}
+      />
+      <div className="person-search-shell">
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
           <Link href={isAdmin ? "/admin" : "/trainer"} style={{ color: "white", textDecoration: "none", fontWeight: 800 }}>
             Back to {isAdmin ? "Admin Dashboard" : "Trainer Workspace"}
@@ -111,7 +132,7 @@ export function PersonSearchPage({
           <p style={{ color: "#9a9a9a", lineHeight: 1.65, maxWidth: 760 }}>
             Search by name, phone number, or Luxe ID. Open the full profile to review attendance, streaks, plan validity, assigned PT, and {isAdmin ? "collections" : "training history"}.
           </p>
-          <form onSubmit={handleSearchSubmit} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "0.85rem", marginTop: "1rem" }}>
+          <form onSubmit={handleSearchSubmit} className="person-search-form">
             <input
               name="q"
               value={searchValue}
@@ -177,7 +198,7 @@ export function PersonSearchPage({
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(120px, 1fr))", gap: "0.85rem", flex: 1, minWidth: 320 }}>
+                <div className="person-profile-metrics">
                   <div style={{ background: "#171717", borderRadius: 16, padding: "1rem" }}>
                     <div style={{ color: "#9a9a9a", fontSize: 12 }}>Streak</div>
                     <div style={{ fontSize: "1.5rem", fontWeight: 900 }}>{profile.member?.streak ?? 0}</div>
@@ -251,7 +272,7 @@ export function PersonSearchPage({
               </div>
             </article>
 
-            <article style={{ display: "grid", gridTemplateColumns: isAdmin ? "1fr 1fr" : "1fr", gap: "1.5rem" }}>
+            <article className="person-detail-grid" style={isAdmin ? undefined : { gridTemplateColumns: "1fr" }}>
               <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: "1.5rem" }}>
                 <div style={{ fontSize: 12, color: "#ff5a5a", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: "0.9rem" }}>Streak Trend</div>
                 <div style={{ display: "grid", gap: "0.75rem" }}>
@@ -274,7 +295,18 @@ export function PersonSearchPage({
                   <div style={{ fontSize: 12, color: "#ff5a5a", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: "0.9rem" }}>Financial View</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "0.85rem", marginBottom: "1rem" }}>
                     <div style={{ background: "#171717", borderRadius: 16, padding: "1rem" }}>
-                      <div style={{ color: "#9a9a9a", fontSize: 12 }}>Total Paid</div>
+                      <div style={{ color: "#9a9a9a", fontSize: 12 }}>Amount Received</div>
+                      <div style={{ fontSize: "1.35rem", fontWeight: 900 }}>{formatCurrency(profile.currentPlanReceived ?? 0)}</div>
+                      <div style={{ color: "#7f7f7f", fontSize: 11, marginTop: 6 }}>
+                        Current plan{profile.currentPlanTotalFee ? ` of ${formatCurrency(profile.currentPlanTotalFee)}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ background: "#171717", borderRadius: 16, padding: "1rem" }}>
+                      <div style={{ color: "#9a9a9a", fontSize: 12 }}>Received This Month</div>
+                      <div style={{ fontSize: "1.35rem", fontWeight: 900 }}>{formatCurrency(profile.paidThisMonth ?? 0)}</div>
+                    </div>
+                    <div style={{ background: "#171717", borderRadius: 16, padding: "1rem" }}>
+                      <div style={{ color: "#9a9a9a", fontSize: 12 }}>Recorded Payments</div>
                       <div style={{ fontSize: "1.35rem", fontWeight: 900 }}>{formatCurrency(profile.totalPaid ?? 0)}</div>
                     </div>
                     <div style={{ background: "#171717", borderRadius: 16, padding: "1rem" }}>
@@ -302,7 +334,7 @@ export function PersonSearchPage({
             {isAdmin && profile.member ? (
               <article style={{ background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: "1.5rem" }}>
                 <div style={{ fontSize: 12, color: "#ff5a5a", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase", marginBottom: "0.9rem" }}>Update Member</div>
-                <form action={updateMemberAction} style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.85rem" }}>
+                <form action={updateMemberAction} className="person-update-form">
                   <input type="hidden" name="memberId" value={profile.member.id} />
                   <input type="hidden" name="profileId" value={profile.member.profileId} />
                   <input name="fullName" defaultValue={profile.member.fullName} placeholder="Full name" style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)", background: "#090909", color: "white", padding: "0.92rem 1rem" }} />

@@ -230,6 +230,11 @@ function parseMoney(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parsePositiveInteger(value: FormDataEntryValue | null) {
+  const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 function parseBoolean(value: FormDataEntryValue | null) {
   return String(value ?? "").trim() === "true";
 }
@@ -244,6 +249,32 @@ function redirectWithError(path: string, code: string, detail?: string): never {
 
 function formatDbError(error: { message?: string; details?: string | null; hint?: string | null }) {
   return [error.message, error.details, error.hint].filter(Boolean).join(" | ");
+}
+
+async function peekGeneratedCode(
+  supabase: ReturnType<typeof createAdminClient>,
+  rpcName: "peek_member_code" | "peek_trainer_code",
+  fallbackCode: string
+) {
+  const { data, error } = await supabase.rpc(rpcName);
+  if (error || typeof data !== "string" || !data.trim()) {
+    return fallbackCode;
+  }
+
+  return data.trim().toUpperCase();
+}
+
+async function reserveGeneratedCode(
+  supabase: ReturnType<typeof createAdminClient>,
+  rpcName: "reserve_member_code" | "reserve_trainer_code",
+  fallbackCode: string
+) {
+  const { data, error } = await supabase.rpc(rpcName);
+  if (error || typeof data !== "string" || !data.trim()) {
+    return fallbackCode;
+  }
+
+  return data.trim().toUpperCase();
 }
 
 function sanitizeFileExtension(fileName: string, mimeType: string) {
@@ -417,49 +448,119 @@ export async function adminPanelLogoutAction() {
 }
 
 export async function createMemberAction(formData: FormData) {
+  const redirectBase = String(formData.get("redirectBase") ?? "/admin/manage").trim() || "/admin/manage";
+  const trainerSession = cookies().get("luxe_trainer_session")?.value;
+  const isTrainerFlow = redirectBase.startsWith("/trainer");
+  const actorRole = isTrainerFlow && trainerSession ? "trainer" : "admin";
+  const actorCode = actorRole === "trainer" ? trainerSession : "ADMIN";
+  const actionContext = isTrainerFlow ? "trainer_manage" : "admin_manage";
+
   if (!isSupabaseConfigured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    redirect("/admin/manage?error=supabase-not-configured");
+    redirect(`${redirectBase}?error=supabase-not-configured`);
   }
 
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const memberCode = String(formData.get("memberCode") ?? "").trim().toUpperCase();
+  const submittedMemberCode = String(formData.get("memberCode") ?? "").trim().toUpperCase();
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const packageId = String(formData.get("packageId") ?? "").trim();
+  const packageName = String(formData.get("packageName") ?? "").trim();
+  const packageDurationDays = parsePositiveInteger(formData.get("packageDurationDays"));
+  const packagePrice = parseMoney(formData.get("packagePrice"));
   const personalTrainerId = String(formData.get("personalTrainerId") ?? "").trim();
   const membershipStatus = String(formData.get("membershipStatus") ?? "active").trim();
   const startDate = String(formData.get("startDate") ?? "").trim();
   const dueAmount = parseMoney(formData.get("dueAmount"));
   const photoFile = formData.get("photo");
 
-  if (!fullName || !memberCode || !phone || !packageId || !startDate) {
-    redirectWithError("/admin/manage", "missing-required-fields");
+  if (!fullName || !phone || (!packageId && !packageName) || !startDate) {
+    redirectWithError(redirectBase, "missing-required-fields");
   }
 
-  if (dueAmount === null) {
-    redirectWithError("/admin/manage", "invalid-number");
+  if (dueAmount === null || (!packageId && (!packageDurationDays || packagePrice === null))) {
+    redirectWithError(redirectBase, "invalid-number");
   }
 
   const supabase = createAdminClient();
-  const { data: membershipPackage, error: packageError } = await supabase
-    .from("membership_packages")
-    .select("id, name, duration_days, price")
-    .eq("id", packageId)
-    .eq("active", true)
-    .single();
+  const memberCode = await reserveGeneratedCode(supabase, "reserve_member_code", submittedMemberCode || "LUXE-1001");
+  let selectedPackage: { id: string; name: string; duration_days: number; price: number | string } | null = null;
 
-  if (packageError || !membershipPackage) {
-    redirectWithError("/admin/manage", "package-not-found", packageError ? formatDbError(packageError) : undefined);
+  if (packageId) {
+    const { data: membershipPackage, error: packageError } = await supabase
+      .from("membership_packages")
+      .select("id, name, duration_days, price")
+      .eq("id", packageId)
+      .eq("active", true)
+      .single();
+
+    if (packageError || !membershipPackage) {
+      redirectWithError(redirectBase, "package-not-found", packageError ? formatDbError(packageError) : undefined);
+    }
+
+    selectedPackage = membershipPackage;
+  } else {
+    const { data: existingPackage, error: existingPackageError } = await supabase
+      .from("membership_packages")
+      .select("id, name, duration_days, price, active")
+      .eq("name", packageName)
+      .maybeSingle();
+
+    if (existingPackageError) {
+      redirectWithError(redirectBase, "database-error", formatDbError(existingPackageError));
+    }
+
+    if (existingPackage) {
+      if (!existingPackage.active || existingPackage.duration_days !== packageDurationDays || Number(existingPackage.price) !== packagePrice) {
+        const { data: updatedPackage, error: updatePackageError } = await supabase
+          .from("membership_packages")
+          .update({
+            duration_days: packageDurationDays,
+            price: packagePrice,
+            active: true
+          })
+          .eq("id", existingPackage.id)
+          .select("id, name, duration_days, price")
+          .single();
+
+        if (updatePackageError || !updatedPackage) {
+          redirectWithError(redirectBase, "database-error", updatePackageError ? formatDbError(updatePackageError) : "Unable to update package.");
+        }
+
+        selectedPackage = updatedPackage;
+      } else {
+        selectedPackage = existingPackage;
+      }
+    } else {
+      const { data: createdPackage, error: createPackageError } = await supabase
+        .from("membership_packages")
+        .insert({
+          name: packageName,
+          duration_days: packageDurationDays,
+          price: packagePrice,
+          active: true
+        })
+        .select("id, name, duration_days, price")
+        .single();
+
+      if (createPackageError || !createdPackage) {
+        redirectWithError(redirectBase, "database-error", createPackageError ? formatDbError(createPackageError) : "Unable to create package.");
+      }
+
+      selectedPackage = createdPackage;
+    }
   }
-
-  const selectedPackage = membershipPackage;
 
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(start);
   end.setDate(end.getDate() + Number(selectedPackage.duration_days) - 1);
   const endDate = end.toISOString().slice(0, 10);
   const totalFee = Number(selectedPackage.price ?? 0);
+  const initialPaymentAmount = Math.max(totalFee - dueAmount, 0);
   let photoPath: string | null = null;
+
+  if (dueAmount > totalFee) {
+    redirectWithError(redirectBase, "invalid-number", "Due amount cannot be greater than the package price.");
+  }
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
@@ -473,14 +574,14 @@ export async function createMemberAction(formData: FormData) {
 
   if (profileError) {
     redirectWithError(
-      "/admin/manage",
+      redirectBase,
       profileError.code === "23505" ? "profile-contact-exists" : "database-error",
       formatDbError(profileError)
     );
   }
 
   if (!profile) {
-    redirectWithError("/admin/manage", "database-error", "Profile creation returned no record.");
+    redirectWithError(redirectBase, "database-error", "Profile creation returned no record.");
   }
 
   try {
@@ -494,7 +595,7 @@ export async function createMemberAction(formData: FormData) {
   } catch (error) {
     await removeProfilePhoto(supabase, photoPath);
     await supabase.from("profiles").delete().eq("id", profile.id);
-    redirectWithError("/admin/manage", "database-error", error instanceof Error ? error.message : "Unable to upload member photo.");
+    redirectWithError(redirectBase, "database-error", error instanceof Error ? error.message : "Unable to upload member photo.");
   }
 
   const { data: member, error: memberError } = await supabase
@@ -512,7 +613,7 @@ export async function createMemberAction(formData: FormData) {
     await removeProfilePhoto(supabase, photoPath);
     await supabase.from("profiles").delete().eq("id", profile.id);
     redirectWithError(
-      "/admin/manage",
+      redirectBase,
       memberError.code === "23505" ? "member-code-exists" : "database-error",
       formatDbError(memberError)
     );
@@ -521,7 +622,7 @@ export async function createMemberAction(formData: FormData) {
   if (!member) {
     await removeProfilePhoto(supabase, photoPath);
     await supabase.from("profiles").delete().eq("id", profile.id);
-    redirectWithError("/admin/manage", "database-error", "Member creation returned no record.");
+    redirectWithError(redirectBase, "database-error", "Member creation returned no record.");
   }
 
   const { error: membershipError } = await supabase.from("memberships").insert({
@@ -537,21 +638,43 @@ export async function createMemberAction(formData: FormData) {
   if (membershipError) {
     await removeProfilePhoto(supabase, photoPath);
     await supabase.from("members").delete().eq("id", member.id);
-    redirectWithError("/admin/manage", "database-error", formatDbError(membershipError));
+    redirectWithError(redirectBase, "database-error", formatDbError(membershipError));
+  }
+
+  if (initialPaymentAmount > 0) {
+    const paidOn = new Date().toISOString().slice(0, 10);
+    const { error: initialPaymentError } = await supabase.from("payments").insert({
+      member_id: member.id,
+      amount: initialPaymentAmount,
+      method: "cash",
+      paid_on: paidOn,
+      notes: "Auto-recorded from member creation based on package price minus outstanding due.",
+      received_by: null
+    });
+
+    if (initialPaymentError) {
+      await removeProfilePhoto(supabase, photoPath);
+      await supabase.from("members").delete().eq("id", member.id);
+      redirectWithError(redirectBase, "database-error", formatDbError(initialPaymentError));
+    }
   }
 
   revalidatePath("/admin");
   revalidatePath("/admin/manage");
+  revalidatePath("/trainer");
+  if (isTrainerFlow) {
+    revalidatePath(redirectBase);
+  }
   await logAuditEvent({
-    actorRole: "admin",
-    actorCode: "ADMIN",
+    actorRole,
+    actorCode,
     actionCode: "member_create",
     status: "success",
     targetType: "member",
     targetCode: memberCode,
-    context: "admin_manage"
+    context: actionContext
   });
-  redirect("/admin/manage?status=member-created");
+  redirect(`${redirectBase}?status=member-created`);
 }
 
 export async function updateMemberAction(formData: FormData) {
@@ -641,7 +764,7 @@ export async function createTrainerAction(formData: FormData) {
   }
 
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const staffCode = String(formData.get("staffCode") ?? "").trim().toUpperCase();
+  const submittedStaffCode = String(formData.get("staffCode") ?? "").trim().toUpperCase();
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const specialization = String(formData.get("specialization") ?? "").trim();
@@ -649,11 +772,12 @@ export async function createTrainerAction(formData: FormData) {
   const photoFile = formData.get("photo");
   let photoPath: string | null = null;
 
-  if (!fullName || !staffCode || !phone || !role) {
+  if (!fullName || !phone || !role) {
     redirectWithError("/admin/manage", "missing-required-fields");
   }
 
   const supabase = createAdminClient();
+  const staffCode = await reserveGeneratedCode(supabase, "reserve_trainer_code", submittedStaffCode || "LUXE-TR-001");
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .insert({
