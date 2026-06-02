@@ -251,30 +251,44 @@ function formatDbError(error: { message?: string; details?: string | null; hint?
   return [error.message, error.details, error.hint].filter(Boolean).join(" | ");
 }
 
-async function peekGeneratedCode(
-  supabase: ReturnType<typeof createAdminClient>,
-  rpcName: "peek_member_code" | "peek_trainer_code",
-  fallbackCode: string
-) {
-  const { data, error } = await supabase.rpc(rpcName);
-  if (error || typeof data !== "string" || !data.trim()) {
-    return fallbackCode;
+function getNextSequentialCode(codes: string[], prefix: string, minValue: number, minWidth = 2) {
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let maxValue = minValue - 1;
+  let paddingWidth = Math.max(minWidth, String(minValue).length);
+
+  for (const code of codes) {
+    const match = code.toUpperCase().match(new RegExp(`^${escapedPrefix}(\\d+)$`));
+    if (!match) {
+      continue;
+    }
+
+    const numericPart = match[1];
+    maxValue = Math.max(maxValue, Number.parseInt(numericPart, 10));
+    paddingWidth = Math.max(paddingWidth, numericPart.length);
   }
 
-  return data.trim().toUpperCase();
+  const nextValue = maxValue + 1;
+  return `${prefix}${String(nextValue).padStart(paddingWidth, "0")}`;
 }
 
-async function reserveGeneratedCode(
-  supabase: ReturnType<typeof createAdminClient>,
-  rpcName: "reserve_member_code" | "reserve_trainer_code",
-  fallbackCode: string
-) {
-  const { data, error } = await supabase.rpc(rpcName);
-  if (error || typeof data !== "string" || !data.trim()) {
-    return fallbackCode;
-  }
+function getNextCountBasedCode(count: number, prefix: string, minWidth = 3) {
+  return `${prefix}${String(Math.max(0, count) + 1).padStart(minWidth, "0")}`;
+}
 
-  return data.trim().toUpperCase();
+async function fetchNextMemberCode(supabase: ReturnType<typeof createAdminClient>) {
+  const { count } = await supabase.from("members").select("*", { count: "exact", head: true });
+  return getNextCountBasedCode(count ?? 0, "LUXE-");
+}
+
+async function fetchNextTrainerCode(supabase: ReturnType<typeof createAdminClient>) {
+  const { data } = await supabase
+    .from("staff")
+    .select("staff_code")
+    .eq("role", "trainer")
+    .order("staff_code");
+
+  const codes = ((data as Array<{ staff_code?: string | null }> | null) ?? []).map((trainer) => trainer.staff_code ?? "");
+  return getNextSequentialCode(codes, "LUXE-TR-", 1);
 }
 
 function sanitizeFileExtension(fileName: string, mimeType: string) {
@@ -460,7 +474,6 @@ export async function createMemberAction(formData: FormData) {
   }
 
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const submittedMemberCode = String(formData.get("memberCode") ?? "").trim().toUpperCase();
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const packageId = String(formData.get("packageId") ?? "").trim();
@@ -482,7 +495,6 @@ export async function createMemberAction(formData: FormData) {
   }
 
   const supabase = createAdminClient();
-  const memberCode = submittedMemberCode || await reserveGeneratedCode(supabase, "reserve_member_code", "LUXE-1001");
   let selectedPackage: { id: string; name: string; duration_days: number; price: number | string } | null = null;
 
   if (packageId) {
@@ -598,16 +610,35 @@ export async function createMemberAction(formData: FormData) {
     redirectWithError(redirectBase, "database-error", error instanceof Error ? error.message : "Unable to upload member photo.");
   }
 
-  const { data: member, error: memberError } = await supabase
-    .from("members")
-    .insert({
-      profile_id: profile.id,
-      member_code: memberCode,
-      personal_trainer_id: personalTrainerId || null,
-      active: membershipStatus !== "expired"
-    })
-    .select("id")
-    .single();
+  let memberCode = "";
+  let member: { id: string } | null = null;
+  let memberError: { code?: string; message?: string; details?: string | null; hint?: string | null } | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    memberCode = await fetchNextMemberCode(supabase);
+
+    const result = await supabase
+      .from("members")
+      .insert({
+        profile_id: profile.id,
+        member_code: memberCode,
+        personal_trainer_id: personalTrainerId || null,
+        active: membershipStatus !== "expired"
+      })
+      .select("id")
+      .single();
+
+    if (!result.error && result.data) {
+      member = result.data;
+      memberError = null;
+      break;
+    }
+
+    memberError = result.error;
+    if (result.error?.code !== "23505") {
+      break;
+    }
+  }
 
   if (memberError) {
     await removeProfilePhoto(supabase, photoPath);
@@ -764,7 +795,6 @@ export async function createTrainerAction(formData: FormData) {
   }
 
   const fullName = String(formData.get("fullName") ?? "").trim();
-  const submittedStaffCode = String(formData.get("staffCode") ?? "").trim().toUpperCase();
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const specialization = String(formData.get("specialization") ?? "").trim();
@@ -777,7 +807,6 @@ export async function createTrainerAction(formData: FormData) {
   }
 
   const supabase = createAdminClient();
-  const staffCode = submittedStaffCode || await reserveGeneratedCode(supabase, "reserve_trainer_code", "LUXE-TR-001");
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .insert({
@@ -814,13 +843,30 @@ export async function createTrainerAction(formData: FormData) {
     redirectWithError("/admin/manage", "database-error", error instanceof Error ? error.message : "Unable to upload trainer photo.");
   }
 
-  const { error: staffError } = await supabase.from("staff").insert({
-    profile_id: profile.id,
-    staff_code: staffCode,
-    role,
-    specialization: specialization || null,
-    active: true
-  });
+  let staffCode = "";
+  let staffError: { code?: string; message?: string; details?: string | null; hint?: string | null } | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    staffCode = await fetchNextTrainerCode(supabase);
+
+    const result = await supabase.from("staff").insert({
+      profile_id: profile.id,
+      staff_code: staffCode,
+      role,
+      specialization: specialization || null,
+      active: true
+    });
+
+    if (!result.error) {
+      staffError = null;
+      break;
+    }
+
+    staffError = result.error;
+    if (result.error.code !== "23505") {
+      break;
+    }
+  }
 
   if (staffError) {
     await removeProfilePhoto(supabase, photoPath);

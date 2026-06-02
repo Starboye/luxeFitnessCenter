@@ -9,6 +9,8 @@ import { ManageFormDraftController } from "@/components/manage-form-draft-contro
 import { MemberPackageSelector } from "@/components/member-package-selector";
 import { isSupabaseConfigured } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+
 type TrainerManagePageProps = {
   searchParams?: {
     status?: string;
@@ -72,31 +74,28 @@ function getErrorMessage(error?: string, detail?: string) {
   }
 }
 
-function getNextSequentialCode(codes: string[], prefix: string, minValue: number) {
-  const maxValue = codes.reduce((highest, code) => {
-    const match = code.toUpperCase().match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`));
+function getNextSequentialCode(codes: string[], prefix: string, minValue: number, minWidth = 2) {
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let maxValue = minValue - 1;
+  let paddingWidth = Math.max(minWidth, String(minValue).length);
+
+  for (const code of codes) {
+    const match = code.toUpperCase().match(new RegExp(`^${escapedPrefix}(\\d+)$`));
     if (!match) {
-      return highest;
+      continue;
     }
 
-    return Math.max(highest, Number.parseInt(match[1], 10));
-  }, minValue - 1);
-
-  const nextValue = maxValue + 1;
-  return `${prefix}${String(nextValue).padStart(3, "0")}`;
-}
-
-async function peekGeneratedCode(
-  supabase: ReturnType<typeof createAdminClient>,
-  rpcName: "peek_member_code",
-  fallbackCode: string
-) {
-  const { data, error } = await supabase.rpc(rpcName);
-  if (error || typeof data !== "string" || !data.trim()) {
-    return fallbackCode;
+    const numericPart = match[1];
+    maxValue = Math.max(maxValue, Number.parseInt(numericPart, 10));
+    paddingWidth = Math.max(paddingWidth, numericPart.length);
   }
 
-  return data.trim().toUpperCase();
+  const nextValue = maxValue + 1;
+  return `${prefix}${String(nextValue).padStart(paddingWidth, "0")}`;
+}
+
+function getNextCountBasedCode(count: number, prefix: string, minWidth = 3) {
+  return `${prefix}${String(Math.max(0, count) + 1).padStart(minWidth, "0")}`;
 }
 
 export default async function TrainerManagePage({ searchParams }: TrainerManagePageProps) {
@@ -109,6 +108,7 @@ export default async function TrainerManagePage({ searchParams }: TrainerManageP
   let members: MemberOption[] = [];
   let packages: PackageOption[] = [];
   let trainers: TrainerOption[] = [];
+  let memberCount = 0;
 
   if (isSupabaseConfigured() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     const supabase = createAdminClient();
@@ -121,13 +121,12 @@ export default async function TrainerManagePage({ searchParams }: TrainerManageP
     members = (memberRows as MemberOption[] | null) ?? [];
     packages = (packageRows as PackageOption[] | null) ?? [];
     trainers = (trainerRows as TrainerOption[] | null) ?? [];
+    memberCount = members.length;
   }
 
   const statusMessage = getStatusMessage(searchParams?.status);
   const errorMessage = getErrorMessage(searchParams?.error, searchParams?.detail);
-  const nextMemberCode = isSupabaseConfigured() && process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? await peekGeneratedCode(createAdminClient(), "peek_member_code", getNextSequentialCode(members.map((member) => member.member_code ?? ""), "LUXE-", 1001))
-    : getNextSequentialCode(members.map((member) => member.member_code ?? ""), "LUXE-", 1001);
+  const nextMemberCode = getNextCountBasedCode(memberCount, "LUXE-");
 
   return (
     <div style={{ minHeight: "100vh", background: "#050505", color: "white", fontFamily: "Inter, system-ui, sans-serif" }}>

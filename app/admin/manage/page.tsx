@@ -12,6 +12,8 @@ import { ManageFormDraftController } from "@/components/manage-form-draft-contro
 import { MemberPackageSelector } from "@/components/member-package-selector";
 import { isSupabaseConfigured } from "@/lib/supabase-server";
 
+export const dynamic = "force-dynamic";
+
 type ManagePageProps = {
   searchParams?: {
     status?: string;
@@ -38,10 +40,6 @@ type TrainerOption = {
   id: string;
   staff_code: string;
   profiles?: { full_name?: string | null } | null;
-};
-
-type StaffCodeOption = {
-  staff_code: string;
 };
 
 function createAdminClient() {
@@ -101,62 +99,60 @@ function getErrorMessage(error?: string, detail?: string) {
   }
 }
 
-function getNextSequentialCode(codes: string[], prefix: string, minValue: number) {
-  const maxValue = codes.reduce((highest, code) => {
-    const match = code.toUpperCase().match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`));
+function getNextSequentialCode(codes: string[], prefix: string, minValue: number, minWidth = 2) {
+  const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let maxValue = minValue - 1;
+  let paddingWidth = Math.max(minWidth, String(minValue).length);
+
+  for (const code of codes) {
+    const match = code.toUpperCase().match(new RegExp(`^${escapedPrefix}(\\d+)$`));
     if (!match) {
-      return highest;
+      continue;
     }
 
-    return Math.max(highest, Number.parseInt(match[1], 10));
-  }, minValue - 1);
-
-  const nextValue = maxValue + 1;
-  return `${prefix}${String(nextValue).padStart(3, "0")}`;
-}
-
-async function peekGeneratedCode(
-  supabase: ReturnType<typeof createAdminClient>,
-  rpcName: "peek_member_code" | "peek_trainer_code",
-  fallbackCode: string
-) {
-  const { data, error } = await supabase.rpc(rpcName);
-  if (error || typeof data !== "string" || !data.trim()) {
-    return fallbackCode;
+    const numericPart = match[1];
+    maxValue = Math.max(maxValue, Number.parseInt(numericPart, 10));
+    paddingWidth = Math.max(paddingWidth, numericPart.length);
   }
 
-  return data.trim().toUpperCase();
+  const nextValue = maxValue + 1;
+  return `${prefix}${String(nextValue).padStart(paddingWidth, "0")}`;
+}
+
+function getNextCountBasedCode(count: number, prefix: string, minWidth = 3) {
+  return `${prefix}${String(Math.max(0, count) + 1).padStart(minWidth, "0")}`;
 }
 
 export default async function AdminManagePage({ searchParams }: ManagePageProps) {
   let members: MemberOption[] = [];
   let packages: PackageOption[] = [];
   let trainers: TrainerOption[] = [];
-  let staffCodeRows: StaffCodeOption[] = [];
+  let memberCount = 0;
+  let packageCount = 0;
 
   if (isSupabaseConfigured() && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     const supabase = createAdminClient();
-    const [{ data: memberRows }, { data: packageRows }, { data: trainerRows }, { data: allStaffRows }] = await Promise.all([
-      supabase.from("members").select("id, member_code, profiles(full_name)").order("member_code"),
-      supabase.from("membership_packages").select("id, name, duration_days, price, active").order("created_at", { ascending: false }),
-      supabase.from("staff").select("id, staff_code, profiles(full_name)").eq("role", "trainer").eq("active", true).order("staff_code"),
-      supabase.from("staff").select("staff_code").order("staff_code")
+    const [
+      { data: memberRows, count: exactMemberCount },
+      { data: packageRows, count: exactPackageCount },
+      { data: trainerRows }
+    ] = await Promise.all([
+      supabase.from("members").select("id, member_code, profiles(full_name)", { count: "exact" }).order("member_code"),
+      supabase.from("membership_packages").select("id, name, duration_days, price, active", { count: "exact" }).order("created_at", { ascending: false }),
+      supabase.from("staff").select("id, staff_code, profiles(full_name)").eq("role", "trainer").eq("active", true).order("staff_code")
     ]);
 
     members = (memberRows as MemberOption[] | null) ?? [];
     packages = (packageRows as PackageOption[] | null) ?? [];
     trainers = (trainerRows as TrainerOption[] | null) ?? [];
-    staffCodeRows = (allStaffRows as StaffCodeOption[] | null) ?? [];
+    memberCount = exactMemberCount ?? members.length;
+    packageCount = exactPackageCount ?? packages.length;
   }
 
   const statusMessage = getStatusMessage(searchParams?.status);
   const errorMessage = getErrorMessage(searchParams?.error, searchParams?.detail);
-  const nextMemberCode = isSupabaseConfigured() && process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? await peekGeneratedCode(createAdminClient(), "peek_member_code", getNextSequentialCode(members.map((member) => member.member_code ?? ""), "LUXE-", 1001))
-    : getNextSequentialCode(members.map((member) => member.member_code ?? ""), "LUXE-", 1001);
-  const nextTrainerCode = isSupabaseConfigured() && process.env.SUPABASE_SERVICE_ROLE_KEY
-    ? await peekGeneratedCode(createAdminClient(), "peek_trainer_code", getNextSequentialCode(staffCodeRows.map((staff) => staff.staff_code ?? ""), "LUXE-TR-", 1))
-    : getNextSequentialCode(staffCodeRows.map((staff) => staff.staff_code ?? ""), "LUXE-TR-", 1);
+  const nextMemberCode = getNextCountBasedCode(memberCount, "LUXE-");
+  const nextTrainerCode = getNextSequentialCode(trainers.map((trainer) => trainer.staff_code ?? ""), "LUXE-TR-", 1);
 
   return (
     <div style={{ minHeight: "100vh", background: "#050505", color: "white", fontFamily: "Inter, system-ui, sans-serif" }}>
@@ -210,11 +206,11 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.9rem" }}>
               <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1rem" }}>
                 <div style={{ color: "#9a9a9a" }}>Members</div>
-                <strong style={{ fontSize: "1.5rem" }}>{members.length}</strong>
+                <strong style={{ fontSize: "1.5rem" }}>{memberCount}</strong>
               </div>
               <div style={{ background: "#161616", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "1rem" }}>
                 <div style={{ color: "#9a9a9a" }}>Packages</div>
-                <strong style={{ fontSize: "1.5rem" }}>{packages.length}</strong>
+                <strong style={{ fontSize: "1.5rem" }}>{packageCount}</strong>
               </div>
             </div>
           </div>
@@ -228,7 +224,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
                 <input name="fullName" placeholder="Full name" required style={inputStyle} />
               </FieldLabel>
               <FieldLabel label="Luxe ID">
-                <input name="memberCode" defaultValue={nextMemberCode} placeholder="Luxe ID" required style={inputStyle} />
+                <input name="memberCode" value={nextMemberCode} placeholder="Luxe ID" readOnly aria-readonly="true" style={{ ...inputStyle, background: "#111111", color: "#bdbdbd", cursor: "not-allowed" }} />
               </FieldLabel>
               <FieldLabel label="Phone">
                 <input name="phone" placeholder="Phone" required style={inputStyle} />
@@ -264,7 +260,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
               </FieldLabel>
               <button type="submit" style={buttonStyle}>Create Member</button>
             </form>
-            <p style={helpTextStyle}>Upload a clear face photo up to 2MB. Photos are stored in a private bucket and shown during check-in, trainer lookup, and gym records.</p>
+            <p style={helpTextStyle}>Luxe ID is assigned automatically when you create the member. Upload a clear face photo up to 2MB. Photos are stored in a private bucket and shown during check-in, trainer lookup, and gym records.</p>
             {!packages.filter((pkg) => pkg.active).length ? (
               <div style={{ marginTop: "0.9rem", color: "#fcd34d", fontWeight: 700 }}>
                 Add at least one active package before creating a member.
@@ -279,7 +275,7 @@ export default async function AdminManagePage({ searchParams }: ManagePageProps)
                 <input name="fullName" placeholder="Full name" required style={inputStyle} />
               </FieldLabel>
               <FieldLabel label="Luxe ID">
-                <input name="staffCode" defaultValue={nextTrainerCode} placeholder="Trainer Luxe ID" required style={inputStyle} />
+                <input name="staffCode" value={nextTrainerCode} placeholder="Trainer Luxe ID" readOnly aria-readonly="true" style={{ ...inputStyle, background: "#111111", color: "#bdbdbd", cursor: "not-allowed" }} />
               </FieldLabel>
               <FieldLabel label="Phone">
                 <input name="phone" placeholder="Phone" required style={inputStyle} />
